@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Bloque tout commit contenant une donnée personnelle ou un fichier privé.
+set -euo pipefail
+. "$(dirname "$0")/_node.sh"
+exec node scripts/verif-confidentialite.mjs --index

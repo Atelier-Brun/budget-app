@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Dernier contrôle avant envoi sur GitHub : tout le dépôt et tous les messages de commit.
+set -euo pipefail
+. "$(dirname "$0")/_node.sh"
+exec node scripts/verif-confidentialite.mjs --tout

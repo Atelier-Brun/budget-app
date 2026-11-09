@@ -1,0 +1,27 @@
+# Instructions locales (jamais dans le dépôt public)
+CLAUDE.md
+.claude/
+
+# Dépendances et fichiers générés
+node_modules/
+dist/
+coverage/
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+
+# Fichiers sensibles : ne jamais versionner
+.env
+.env.*
+*.xlsx
+*.xls
+*.csv
+budget-sauvegarde-*.json
+donnees-privees*
+mots-interdits*
+mots-surveilles*
+
+# Système
+.DS_Store
+*.log
