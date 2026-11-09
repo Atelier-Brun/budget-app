@@ -3,7 +3,7 @@ import { svelte } from '@sveltejs/vite-plugin-svelte';
 import paquet from './package.json' with { type: 'json' };
 import { pwa } from './plugin-pwa.ts';
 
-// L'app est servie par GitHub Pages sous https://bndh25.github.io/budget-app/
+// L'app est servie par GitHub Pages sous https://atelier-brun.github.io/budget-app/
 // La démo (`vite build --mode demo`) est une compilation séparée sous /budget-app/demo/.
 export default defineConfig(({ mode }) => {
   const demo = mode === 'demo';
