@@ -4,11 +4,9 @@
 // La 180 (apple-touch-icon) est pleine page : iOS arrondit lui-même les coins. La 192 et la 512 sont arrondies.
 import { mkdirSync } from 'node:fs';
 import { webkit } from '@playwright/test';
+import { pointsLogo } from '../src/lib/logo.ts';
 
-const points = Array.from({ length: 360 }, (_, k) => {
-  const t = (2 * Math.PI * k) / 360;
-  return `${(50 + 18 * Math.sin(2 * t)).toFixed(3)},${(50 + 22 * Math.sin(t)).toFixed(3)}`;
-}).join(' ');
+const points = pointsLogo();
 
 // « DÉMO » dessiné en traits (lettres de 7×10), centré en bas, sur bandeau caramel.
 const DEMO = `<rect y="80" width="100" height="20" fill="#C8A97E"/>

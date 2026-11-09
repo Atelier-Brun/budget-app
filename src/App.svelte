@@ -2,12 +2,24 @@
   // Coquille (1b) : écrans réels en 1e.
   import { onMount } from 'svelte';
   import { enregistrerSW } from './sw-enregistrement';
+  import { demanderPersistance, ouvrirBase, traduire } from './lib/stockage';
+  import { pointsLogo } from './lib/logo';
+
+  const points = pointsLogo();
 
   const version: string = __APP_VERSION__;
   const demo: boolean = __DEMO__;
   let activer = $state<(() => void) | null>(null);
+  let alerte = $state('');
 
-  onMount(() => enregistrerSW((f) => (activer = f)));
+  onMount(() => {
+    enregistrerSW((f) => (activer = f));
+    // Bases séparées : la démo ne lit ni n'écrit jamais la base réelle.
+    // shortcut: connexion non conservée tant qu'aucun écran ne lit les données, à garder dès 1e.
+    ouvrirBase(demo ? 'budget-demo' : 'budget', () => (alerte = 'BUDGET a été mis à jour dans une autre fenêtre : rechargez l’app.'))
+      .then(() => demanderPersistance())
+      .catch((e: unknown) => (alerte = traduire(e).message));
+  });
 </script>
 
 {#if demo}
@@ -15,9 +27,28 @@
 {/if}
 
 <main>
-  <div class="monogramme" aria-hidden="true">B</div>
+  <!-- Logo dessiné en SVG (mêmes formes et couleurs que l'icône), aucune police. -->
+  <svg class="logo" viewBox="0 0 100 100" aria-hidden="true">
+    <defs>
+      <linearGradient id="logo-fond" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#2E1B11" /><stop offset="1" stop-color="#1C0F09" />
+      </linearGradient>
+      <radialGradient id="logo-lueur" gradientUnits="userSpaceOnUse" cx="50" cy="0" r="60">
+        <stop offset="0" stop-color="#5A3A24" stop-opacity="0.55" /><stop offset="1" stop-color="#5A3A24" stop-opacity="0" />
+      </radialGradient>
+      <linearGradient id="logo-trait" gradientUnits="userSpaceOnUse" x1="25" y1="10" x2="75" y2="90">
+        <stop offset="0" stop-color="#E9CFA3" /><stop offset="0.55" stop-color="#C8A97E" /><stop offset="1" stop-color="#8F6E45" />
+      </linearGradient>
+    </defs>
+    <rect width="100" height="100" rx="22" fill="url(#logo-fond)" />
+    <rect width="100" height="100" rx="22" fill="url(#logo-lueur)" />
+    <polygon {points} fill="none" stroke="url(#logo-trait)" stroke-width="9" stroke-linejoin="round" />
+  </svg>
   <h1>BUDGET</h1>
   <p class="version">Version {version}</p>
+  {#if alerte}
+    <p class="alerte" role="alert">{alerte}</p>
+  {/if}
 </main>
 
 {#if activer}
@@ -49,20 +80,13 @@
     padding: env(safe-area-inset-top) 24px env(safe-area-inset-bottom);
   }
 
-  .monogramme {
-    display: grid;
-    place-items: center;
+  .logo {
+    display: block;
     width: 112px;
     height: 112px;
     margin-bottom: 18px;
-    border-radius: 28px;
-    background: linear-gradient(180deg, var(--surface-2), var(--surface-1));
+    border-radius: 22%; /* même arrondi que le rx 22 du dessin, pour que l'ombre suive la forme */
     box-shadow: var(--ombre);
-    color: var(--accent);
-    font-family: ui-serif, 'New York', Georgia, serif;
-    font-size: 72px;
-    font-weight: 700;
-    text-shadow: 0 2px 3px rgb(0 0 0 / 0.5);
   }
 
   h1 {
@@ -77,6 +101,16 @@
     margin: 0;
     color: var(--texte-2);
     font-size: 0.8125rem;
+  }
+
+  .alerte {
+    max-width: 22rem;
+    margin: 16px 0 0;
+    padding: 12px 16px;
+    border-radius: 12px;
+    background: var(--surface-1);
+    box-shadow: var(--ombre);
+    text-align: center;
   }
 
   .maj {
