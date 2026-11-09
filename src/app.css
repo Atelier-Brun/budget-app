@@ -1,0 +1,52 @@
+:root {
+  color-scheme: dark;
+  --fond: #1a1410;
+  --surface-1: #2a211a;
+  --surface-2: #3a2e24;
+  --accent: #c8a97e;
+  --texte: #f2e8da;
+  --texte-2: #a8977f;
+  --ombre: 0 1px 0 rgb(242 232 218 / 0.06) inset, 0 8px 24px rgb(0 0 0 / 0.45), 0 2px 4px rgb(0 0 0 / 0.35);
+  font-family: -apple-system, system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--fond);
+  color: var(--texte);
+}
+
+body {
+  -webkit-tap-highlight-color: transparent;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -21,7 +21,8 @@
     "checkJs": true,
     "noEmit": true,
     "skipLibCheck": true,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "allowImportingTsExtensions": true
   },
   "include": [
     "src/**/*.ts",
@@ -29,6 +30,7 @@
     "tests/**/*.ts",
     "scripts/**/*.mjs",
     "vite.config.ts",
-    "playwright.config.ts"
+    "playwright.config.ts",
+    "plugin-pwa.ts"
   ]
 }
