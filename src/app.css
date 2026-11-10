@@ -7,6 +7,10 @@
   --texte: #f2e8da;
   --texte-2: #a8977f;
   --ombre: 0 1px 0 rgb(242 232 218 / 0.06) inset, 0 8px 24px rgb(0 0 0 / 0.45), 0 2px 4px rgb(0 0 0 / 0.35);
+  /* Vert et rouge sourds, contraste ≥ 4,5:1 sur --surface-1 (WCAG AA) ; toujours accompagnés d'un signe. */
+  --credit: #8fc28c;
+  --debit: #e8857a;
+  --barre: calc(64px + env(safe-area-inset-bottom));
   font-family: -apple-system, system-ui, sans-serif;
   font-variant-numeric: tabular-nums;
   -webkit-text-size-adjust: 100%;
@@ -35,6 +39,194 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 100dvh;
+}
+
+/* Éléments communs aux écrans. */
+.ecran {
+  flex: 1;
+  width: 100%;
+  max-width: 40rem;
+  margin: 0 auto;
+  /* + 18 px : le bouton « + » dépasse de la barre ; le dernier bouton ne passe jamais dessous. */
+  padding: calc(env(safe-area-inset-top) + 12px) 16px calc(var(--barre) + 18px + 24px);
+  animation: apparition 160ms ease-out;
+}
+
+.entete {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  margin-bottom: 16px;
+}
+
+.entete h1 {
+  margin: 0;
+  font-size: 1.375rem;
+  font-weight: 600;
+}
+
+.carte {
+  border-radius: 16px;
+  background: linear-gradient(180deg, var(--surface-2), var(--surface-1));
+  box-shadow: var(--ombre);
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+.bouton {
+  min-height: 48px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #d6b98f, var(--accent));
+  box-shadow: 0 1px 0 rgb(255 255 255 / 0.25) inset, 0 4px 12px rgb(0 0 0 / 0.4);
+  color: var(--fond);
+  font-weight: 600;
+}
+
+.bouton-discret {
+  min-height: 44px;
+  padding: 0 14px;
+  /* Bordure visible aussi sur une carte (correctif du bouton « Annuler »). */
+  border: 1px solid rgb(242 232 218 / 0.22);
+  border-radius: 12px;
+  background: transparent;
+}
+
+.retour {
+  min-width: 44px;
+  min-height: 44px;
+  margin-left: -10px;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 1.0625rem;
+}
+
+.secondaire {
+  color: var(--texte-2);
+}
+
+.erreur {
+  color: var(--debit);
+}
+
+input,
+select {
+  font: inherit;
+  font-size: 1.0625rem; /* ≥ 16 px : évite le zoom automatique d'iOS */
+  color: var(--texte);
+}
+
+/* Fiches (compte, catégorie…) : titre, formulaire, choix en segments, confirmation. */
+.titre-fiche {
+  margin: 0 0 16px;
+  font-size: 1.375rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.formulaire {
+  display: grid;
+  gap: 18px;
+  padding: 18px 16px;
+}
+
+.champ {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.champ > span,
+.champ > legend {
+  padding: 0;
+  color: var(--texte-2);
+  font-size: 0.8125rem;
+}
+
+.formulaire input:not([type='radio'], [type='checkbox']),
+.champ select {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 12px;
+  border: 1px solid rgb(242 232 218 / 0.1);
+  border-radius: 12px;
+  background: var(--fond);
+}
+
+.segments {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 12px;
+  background: var(--fond);
+}
+
+.segment {
+  position: relative;
+  flex: 1;
+  display: grid;
+  place-items: center;
+  min-height: 44px; /* zone tactile ≥ 44 px */
+  border-radius: 9px;
+  color: var(--texte-2);
+}
+
+.segment:has(input:checked) {
+  background: var(--surface-2);
+  box-shadow: 0 1px 0 rgb(242 232 218 / 0.08) inset, 0 2px 6px rgb(0 0 0 / 0.4);
+  color: var(--texte);
+  font-weight: 600;
+}
+
+.segment:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+}
+
+.segment input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.formulaire .erreur {
+  margin: 0;
+}
+
+.action {
+  width: 100%;
+  margin-top: 20px;
+}
+
+.confirmation {
+  display: grid;
+  gap: 14px;
+  margin-top: 20px;
+  padding: 16px;
+}
+
+.confirmation p {
+  margin: 0;
+}
+
+.boutons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+@keyframes apparition {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
 }
 
 :focus-visible {

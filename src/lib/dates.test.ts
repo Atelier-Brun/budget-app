@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { aujourdHui, estDateValide, formaterDate, joursDansMois } from './dates.ts';
+import { ajouterJours, aujourdHui, estDateValide, formaterDate, joursDansMois } from './dates.ts';
 
 describe('joursDansMois', () => {
   it('mois courts, longs, février bissextile ou non', () => {
@@ -29,6 +29,16 @@ describe('aujourdHui', () => {
   });
   it('sans argument : date du jour au bon format', () => {
     expect(estDateValide(aujourdHui())).toBe(true);
+  });
+});
+
+describe('ajouterJours', () => {
+  it('traverse mois, années, 29 février et changement d’heure', () => {
+    expect(ajouterJours('2026-11-10', -30)).toBe('2026-10-11');
+    expect(ajouterJours('2026-12-31', 1)).toBe('2027-01-01');
+    expect(ajouterJours('2028-02-28', 1)).toBe('2028-02-29');
+    expect(ajouterJours('2026-10-25', 1)).toBe('2026-10-26'); // passage à l'heure d'hiver
+    expect(ajouterJours('2026-11-10', 0)).toBe('2026-11-10');
   });
 });
 

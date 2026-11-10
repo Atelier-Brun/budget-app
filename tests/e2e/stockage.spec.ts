@@ -57,8 +57,9 @@ test('l’app crée sa base v1 ; la démo a la sienne et ne touche pas à la bas
 
   await page.goto(DEMO);
   expect((await decrire(page, 'budget-demo')).version).toBe(1);
-  expect(await comptes(page, 'budget-demo')).toEqual([]);
-  expect(await comptes(page, 'budget')).toEqual([FICTIF]);
+  await expect(page.getByRole('button', { name: /^COMPTE COURANT/ })).toBeVisible(); // démo remplie
+  expect(await comptes(page, 'budget-demo')).not.toContainEqual(FICTIF);
+  expect(await comptes(page, 'budget')).toEqual([FICTIF]); // base réelle intacte
 });
 
 test('les données sont conservées après rechargement', async ({ page }) => {

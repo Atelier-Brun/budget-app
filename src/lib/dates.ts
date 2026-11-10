@@ -22,6 +22,12 @@ export function aujourdHui(maintenant = new Date()): string {
   return `${maintenant.getFullYear()}-${deux(maintenant.getMonth() + 1)}-${deux(maintenant.getDate())}`;
 }
 
+/** Ajoute (ou retire si négatif) des jours, en UTC : aucun effet de l'heure d'été. */
+export function ajouterJours(date: string, jours: number): string {
+  const [a, m, j] = date.split('-').map(Number);
+  return new Date(Date.UTC(a!, m! - 1, j! + jours)).toISOString().slice(0, 10);
+}
+
 /** « 2026-11-09 » → « 09/11/2026 », pour les messages. */
 export function formaterDate(date: string): string {
   return date.split('-').reverse().join('/');

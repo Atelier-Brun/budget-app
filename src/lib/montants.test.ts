@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formaterMontant, lireMontant, MONTANT_MAX } from './montants.ts';
+import { formaterMontant, lireMontant, MONTANT_MAX, taper } from './montants.ts';
 
 const ok = (saisie: string) => {
   const r = lireMontant(saisie);
@@ -51,6 +51,27 @@ describe('lireMontant', () => {
     expect(erreur('10 000 000')).toMatch(/trop élevé/);
     expect(erreur('99999999')).toMatch(/trop élevé/);
     expect(erreur('9'.repeat(30))).toMatch(/invalide/);
+  });
+});
+
+describe('taper (pavé numérique)', () => {
+  const suite = (touches: string[]) => touches.reduce(taper, 0);
+  it('rempli de droite à gauche en centimes : 2-3-4-0 → 23,40 €', () => {
+    expect(suite(['2', '3', '4', '0'])).toBe(2340);
+    expect(formaterMontant(suite(['2', '3', '4', '0']))).toBe('23,40 €');
+    expect(suite(['5'])).toBe(5);
+    expect(suite(['0', '0', '7'])).toBe(7);
+  });
+  it('effacer retire le dernier chiffre ; sans effet à zéro', () => {
+    expect(suite(['2', '3', '4', 'effacer'])).toBe(23);
+    expect(suite(['effacer'])).toBe(0);
+  });
+  it('maximum 9 999 999,99 € : chiffre de trop ignoré ; touche inconnue ignorée', () => {
+    const max = suite('999999999'.split(''));
+    expect(max).toBe(MONTANT_MAX);
+    expect(taper(max, '9')).toBe(MONTANT_MAX);
+    expect(taper(12, 'x')).toBe(12);
+    expect(taper(12, '12')).toBe(12);
   });
 });
 

@@ -22,6 +22,17 @@ export function lireMontant(saisie: string): Lecture {
   return { ok: true, centimes };
 }
 
+/**
+ * Pavé numérique de la saisie : chaque chiffre s'ajoute à droite, en centimes (2-3-4-0 → 2 340 = 23,40 €).
+ * « effacer » retire le dernier chiffre. Une touche qui dépasserait le maximum est ignorée.
+ */
+export function taper(centimes: number, touche: string): number {
+  if (touche === 'effacer') return Math.floor(centimes / 10);
+  if (!/^[0-9]$/.test(touche)) return centimes;
+  const suivant = centimes * 10 + Number(touche);
+  return suivant > MONTANT_MAX ? centimes : suivant;
+}
+
 const EUROS = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' });
 
 /**

@@ -1,8 +1,12 @@
 import { expect, test } from '@playwright/test';
 
-test("l'app démarre et affiche son nom et sa version", async ({ page }) => {
+test("l'app démarre : nom, barre de navigation, version dans Réglages", async ({ page }) => {
   await page.goto('./');
   await expect(page).toHaveTitle('BUDGET');
   await expect(page.getByRole('heading', { name: 'BUDGET' })).toBeVisible();
-  await expect(page.getByText(/^Version \d+\.\d+\.\d+$/)).toBeVisible();
+  const nav = page.getByRole('navigation', { name: 'Navigation principale' });
+  await expect(nav.getByRole('button', { name: 'Accueil' })).toHaveAttribute('aria-current', 'page');
+  await nav.getByRole('button', { name: 'Réglages' }).click();
+  await expect(nav.getByRole('button', { name: 'Réglages' })).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByText(/^\d+\.\d+\.\d+$/)).toBeVisible();
 });

@@ -18,6 +18,8 @@ export interface Operation {
   sens: Sens;
   /** Toujours positif, en centimes ; le sens dit s'il s'ajoute ou se retire. */
   montant: number;
+  /** Absente pour un virement (étape 2). */
+  categorieId?: string;
 }
 
 /** Solde d'un compte à la fin du jour `jusquA` (opérations futures exclues). */
@@ -34,9 +36,9 @@ export function calculerSolde(compte: Compte, operations: readonly Operation[], 
 export function verifierOperation(op: Operation, compte: Compte): string | null {
   if (!estDateValide(op.date)) return 'Date invalide.';
   if (!Number.isSafeInteger(op.montant) || op.montant <= 0 || op.montant > MONTANT_MAX) return 'Montant invalide.';
-  if (op.sens !== 'debit' && op.sens !== 'credit') return 'Choisis débit ou crédit.';
+  if (op.sens !== 'debit' && op.sens !== 'credit') return 'Sens obligatoire (débit ou crédit).';
   if (op.date < compte.dateDepart)
-    return `Date antérieure au départ du compte (${formaterDate(compte.dateDepart)}) : choisis une date à partir de ce jour.`;
+    return `Date antérieure au départ du compte (${formaterDate(compte.dateDepart)}) : saisissez une date à partir de ce jour.`;
   return null;
 }
 
@@ -47,5 +49,5 @@ export function verifierDepart(compteId: string, soldeDepart: number, dateDepart
   const avant = operations.filter((op) => op.compteId === compteId && op.date < dateDepart);
   if (avant.length === 0) return null;
   const premiere = avant.reduce((min, op) => (op.date < min ? op.date : min), dateDepart);
-  return `${avant.length} opération(s) datée(s) avant le ${formaterDate(dateDepart)} : choisis une date de départ au plus tard le ${formaterDate(premiere)}.`;
+  return `${avant.length} opération(s) datée(s) avant le ${formaterDate(dateDepart)} : la date de départ doit être au plus tard le ${formaterDate(premiere)}.`;
 }

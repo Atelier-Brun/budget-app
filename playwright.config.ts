@@ -12,7 +12,8 @@ export default defineConfig({
     baseURL: 'http://localhost:4173/budget-app/',
     trace: 'retain-on-failure',
   },
-  projects: [{ name: 'iPhone 15', use: { ...devices['iPhone 15'] } }],
+  // Langue et fuseau de l'iPhone réel : dates affichées à la française, « aujourd'hui » à l'heure de Paris.
+  projects: [{ name: 'iPhone 15', use: { ...devices['iPhone 15'], locale: 'fr-FR', timezoneId: 'Europe/Paris' } }],
   webServer: {
     command: 'npm run build && npm run preview -- --port 4173 --strictPort',
     url: 'http://localhost:4173/budget-app/',

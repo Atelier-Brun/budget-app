@@ -40,14 +40,14 @@ describe('verifierOperation', () => {
   });
   it('refuse une date antérieure au départ, avec la date dans le message', () => {
     expect(verifierOperation({ ...op, date: '2026-11-09' }, compte)).toBe(
-      'Date antérieure au départ du compte (10/11/2026) : choisis une date à partir de ce jour.',
+      'Date antérieure au départ du compte (10/11/2026) : saisissez une date à partir de ce jour.',
     );
   });
   it('refuse date, montant ou sens invalides', () => {
     expect(verifierOperation({ ...op, date: '2026-02-30' }, compte)).toBe('Date invalide.');
     for (const montant of [0, -1, 12.5, 1_000_000_000, Number.NaN])
       expect(verifierOperation({ ...op, montant }, compte)).toBe('Montant invalide.');
-    expect(verifierOperation({ ...op, sens: 'autre' as never }, compte)).toBe('Choisis débit ou crédit.');
+    expect(verifierOperation({ ...op, sens: 'autre' as never }, compte)).toBe('Sens obligatoire (débit ou crédit).');
   });
 });
 
@@ -58,7 +58,7 @@ describe('verifierDepart', () => {
   });
   it('refuse une date de départ qui laisserait des opérations avant elle', () => {
     expect(verifierDepart('c1', 0, '2026-11-15', ops)).toBe(
-      '2 opération(s) datée(s) avant le 15/11/2026 : choisis une date de départ au plus tard le 10/11/2026.',
+      '2 opération(s) datée(s) avant le 15/11/2026 : la date de départ doit être au plus tard le 10/11/2026.',
     );
   });
   it('ignore les opérations des autres comptes', () => {

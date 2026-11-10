@@ -1,55 +1,218 @@
 <script lang="ts">
-  // Coquille (1b) : écrans réels en 1e.
+  // Coquille de l'app : base de données, écran courant, barre de navigation, bandeaux.
+  // Navigation par état (aucune donnée dans l'URL).
   import { onMount } from 'svelte';
+  import Barre from './composants/Barre.svelte';
+  import Accueil from './ecrans/Accueil.svelte';
+  import Categories from './ecrans/Categories.svelte';
+  import Comptes from './ecrans/Comptes.svelte';
+  import FicheCategorie from './ecrans/FicheCategorie.svelte';
+  import FicheCompte from './ecrans/FicheCompte.svelte';
+  import Reglages from './ecrans/Reglages.svelte';
+  import Saisie from './ecrans/Saisie.svelte';
+  import { nouvelleCategorie, type Categorie } from './lib/categories';
+  import { nouveauCompte, type Compte } from './lib/comptes';
+  import { aujourdHui } from './lib/dates';
+  import { genererDemo } from './lib/demo';
+  import type { OperationComplete } from './lib/operations';
+  import { demanderPersistance, ecrire, lireTout, ouvrirBase, traduire } from './lib/stockage';
   import { enregistrerSW } from './sw-enregistrement';
-  import { demanderPersistance, ouvrirBase, traduire } from './lib/stockage';
-  import { pointsLogo } from './lib/logo';
 
-  const points = pointsLogo();
+  type Ecran =
+    | { nom: 'accueil' }
+    | { nom: 'reglages' }
+    | { nom: 'comptes' }
+    | { nom: 'compte'; compte: Compte; depuis: 'accueil' | 'comptes' }
+    | { nom: 'categories' }
+    | { nom: 'categorie'; categorie: Categorie };
 
-  const version: string = __APP_VERSION__;
   const demo: boolean = __DEMO__;
   let activer = $state<(() => void) | null>(null);
   let alerte = $state('');
+  let db = $state<IDBDatabase | null>(null);
+  let persistant = $state<boolean | null>(null);
+  let comptes = $state<Compte[]>([]);
+  let categories = $state<Categorie[]>([]);
+  let operations = $state<OperationComplete[]>([]);
+  let ecran = $state<Ecran>({ nom: 'accueil' });
+  let saisie = $state(false);
+  let message = $state('');
+  let minuterie: ReturnType<typeof setTimeout> | undefined;
+
+  async function charger(base: IDBDatabase) {
+    [comptes, categories, operations] = await Promise.all([
+      lireTout<Compte>(base, 'comptes'),
+      lireTout<Categorie>(base, 'categories'),
+      lireTout<OperationComplete>(base, 'operations'),
+    ]);
+  }
+
+  /** Une écriture « tout ou rien » dans la base, puis relecture : l'écran montre toujours ce qui est enregistré. */
+  async function modifier(magasins: string[], travail: (tx: IDBTransaction) => void): Promise<boolean> {
+    if (!db) return false;
+    try {
+      const base = db;
+      await ecrire(base, magasins, travail);
+      await charger(base);
+      return true;
+    } catch (e) {
+      alerte = traduire(e).message;
+      return false;
+    }
+  }
+
+  const enregistrerComptes = (liste: Compte[]) =>
+    modifier(['comptes'], (tx) => {
+      for (const c of liste) tx.objectStore('comptes').put($state.snapshot(c));
+    });
+
+  /** Démo uniquement : remplace tout le contenu de la base démo par des données fictives neuves. */
+  function remplirDemo(): Promise<boolean> {
+    if (!demo) return Promise.resolve(false); // garde-fou : jamais dans la base réelle
+    const d = genererDemo(aujourdHui());
+    return modifier(['comptes', 'categories', 'operations'], (tx) => {
+      for (const m of ['comptes', 'categories', 'operations'] as const) {
+        const magasin = tx.objectStore(m);
+        magasin.clear();
+        for (const x of d[m]) magasin.put(x);
+      }
+    });
+  }
+
+  function annoncer(texte: string) {
+    message = texte;
+    clearTimeout(minuterie);
+    minuterie = setTimeout(() => (message = ''), 2500);
+  }
+
+  async function validerOperation(op: OperationComplete): Promise<boolean> {
+    const ok = await modifier(['operations'], (tx) => void tx.objectStore('operations').add(op));
+    if (ok) {
+      saisie = false;
+      aller({ nom: 'accueil' });
+      annoncer('Opération enregistrée');
+    }
+    return ok;
+  }
+
+  function aller(e: Ecran) {
+    ecran = e;
+    message = ''; // le message de confirmation ne doit jamais masquer l'écran suivant
+    window.scrollTo(0, 0);
+  }
+
+  const ouvrir = (depuis: 'accueil' | 'comptes') => (id: string) => {
+    const compte = comptes.find((c) => c.id === id);
+    if (compte) aller({ nom: 'compte', compte, depuis });
+  };
+  const creer = (depuis: 'accueil' | 'comptes') => () => aller({ nom: 'compte', compte: nouveauCompte(), depuis });
+  const ouvrirCategorie = (id: string) => {
+    const categorie = categories.find((c) => c.id === id);
+    if (categorie) aller({ nom: 'categorie', categorie });
+  };
 
   onMount(() => {
     enregistrerSW((f) => (activer = f));
     // Bases séparées : la démo ne lit ni n'écrit jamais la base réelle.
-    // shortcut: connexion non conservée tant qu'aucun écran ne lit les données, à garder dès 1e.
-    ouvrirBase(demo ? 'budget-demo' : 'budget', () => (alerte = 'BUDGET a été mis à jour dans une autre fenêtre : rechargez l’app.'))
-      .then(() => demanderPersistance())
+    ouvrirBase(demo ? 'budget-demo' : 'budget', () => {
+      db = null;
+      alerte = 'BUDGET a été mis à jour dans une autre fenêtre : rechargez l’app.';
+    })
+      .then(async (base) => {
+        db = base;
+        await charger(base);
+        if (demo && comptes.length + categories.length + operations.length === 0) await remplirDemo();
+        persistant = await demanderPersistance();
+      })
       .catch((e: unknown) => (alerte = traduire(e).message));
   });
 </script>
 
 {#if demo}
-  <div class="demo" role="note">DÉMO – données fictives</div>
+  <div class="bandeau demo" role="note">DÉMO – données fictives</div>
+{:else}
+  <!-- Retiré à l'étape 3 (chiffrement + sauvegarde validés). -->
+  <div class="bandeau travail" role="note">Version de travail : aucune donnée réelle avant l’activation du chiffrement</div>
+{/if}
+
+{#if alerte}
+  <p class="alerte" role="alert">{alerte}</p>
 {/if}
 
 <main>
-  <!-- Logo dessiné en SVG (mêmes formes et couleurs que l'icône), aucune police. -->
-  <svg class="logo" viewBox="0 0 100 100" aria-hidden="true">
-    <defs>
-      <linearGradient id="logo-fond" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0" stop-color="#2E1B11" /><stop offset="1" stop-color="#1C0F09" />
-      </linearGradient>
-      <radialGradient id="logo-lueur" gradientUnits="userSpaceOnUse" cx="50" cy="0" r="60">
-        <stop offset="0" stop-color="#5A3A24" stop-opacity="0.55" /><stop offset="1" stop-color="#5A3A24" stop-opacity="0" />
-      </radialGradient>
-      <linearGradient id="logo-trait" gradientUnits="userSpaceOnUse" x1="25" y1="10" x2="75" y2="90">
-        <stop offset="0" stop-color="#E9CFA3" /><stop offset="0.55" stop-color="#C8A97E" /><stop offset="1" stop-color="#8F6E45" />
-      </linearGradient>
-    </defs>
-    <rect width="100" height="100" rx="22" fill="url(#logo-fond)" />
-    <rect width="100" height="100" rx="22" fill="url(#logo-lueur)" />
-    <polygon {points} fill="none" stroke="url(#logo-trait)" stroke-width="9" stroke-linejoin="round" />
-  </svg>
-  <h1>BUDGET</h1>
-  <p class="version">Version {version}</p>
-  {#if alerte}
-    <p class="alerte" role="alert">{alerte}</p>
+  {#if ecran.nom === 'accueil'}
+    <Accueil {comptes} {operations} onouvrir={ouvrir('accueil')} oncreer={creer('accueil')} />
+  {:else if ecran.nom === 'reglages'}
+    <Reglages
+      {persistant}
+      oncomptes={() => aller({ nom: 'comptes' })}
+      oncategories={() => aller({ nom: 'categories' })}
+      onreinitialiser={demo ? remplirDemo : null}
+    />
+  {:else if ecran.nom === 'comptes'}
+    <Comptes {comptes} onouvrir={ouvrir('comptes')} oncreer={creer('comptes')} onretour={() => aller({ nom: 'reglages' })} />
+  {:else if ecran.nom === 'categories'}
+    <Categories
+      {categories}
+      onouvrir={ouvrirCategorie}
+      oncreer={() => aller({ nom: 'categorie', categorie: nouvelleCategorie() })}
+      onretour={() => aller({ nom: 'reglages' })}
+    />
+  {:else if ecran.nom === 'categorie'}
+    {#key ecran.categorie.id}
+      <FicheCategorie
+        categorie={ecran.categorie}
+        {categories}
+        {operations}
+        onenregistrer={(c) => modifier(['categories'], (tx) => void tx.objectStore('categories').put($state.snapshot(c)))}
+        onsupprimer={(id) => modifier(['categories'], (tx) => void tx.objectStore('categories').delete(id))}
+        onretour={() => aller({ nom: 'categories' })}
+      />
+    {/key}
+  {:else}
+    {@const depuis = ecran.depuis}
+    {#key ecran.compte.id}
+      <FicheCompte
+        compte={ecran.compte}
+        {comptes}
+        {operations}
+        retour={depuis === 'accueil' ? 'Accueil' : 'Comptes'}
+        onenregistrer={enregistrerComptes}
+        onretour={() => aller({ nom: depuis })}
+      />
+    {/key}
   {/if}
 </main>
+
+<Barre
+  actif={ecran.nom === 'accueil' || (ecran.nom === 'compte' && ecran.depuis === 'accueil') ? 'accueil' : 'reglages'}
+  onaller={(o) => aller({ nom: o })}
+  onplus={() => {
+    message = '';
+    saisie = true;
+  }}
+/>
+
+{#if saisie}
+  <Saisie
+    {comptes}
+    {categories}
+    onvalider={validerOperation}
+    onfermer={() => (saisie = false)}
+    oncreercompte={() => {
+      saisie = false;
+      creer('accueil')();
+    }}
+    oncreercategorie={() => {
+      saisie = false;
+      aller({ nom: 'categorie', categorie: nouvelleCategorie() });
+    }}
+  />
+{/if}
+
+{#if message}
+  <p class="toast" role="status">{message}</p>
+{/if}
 
 {#if activer}
   <div class="maj" role="status">
@@ -59,53 +222,39 @@
 {/if}
 
 <style>
-  .demo {
+  .bandeau {
     position: sticky;
     top: 0;
-    z-index: 1;
+    z-index: 3;
     padding: calc(env(safe-area-inset-top) + 6px) 16px 6px;
-    background: var(--accent);
-    color: var(--fond);
     font-size: 0.8125rem;
     font-weight: 600;
     text-align: center;
   }
 
+  .demo {
+    background: var(--accent);
+    color: var(--fond);
+  }
+
+  .travail {
+    background: var(--surface-2);
+    color: var(--accent);
+    box-shadow: 0 1px 0 rgb(200 169 126 / 0.35);
+  }
+
+  /* Sous un bandeau, l'écran n'a plus à éviter l'encoche lui-même. */
+  .bandeau ~ main :global(.ecran) {
+    padding-top: 12px;
+  }
+
   main {
-    display: grid;
-    place-content: center;
-    justify-items: center;
-    gap: 6px;
+    display: flex;
     flex: 1;
-    padding: env(safe-area-inset-top) 24px env(safe-area-inset-bottom);
-  }
-
-  .logo {
-    display: block;
-    width: 112px;
-    height: 112px;
-    margin-bottom: 18px;
-    border-radius: 22%; /* même arrondi que le rx 22 du dessin, pour que l'ombre suive la forme */
-    box-shadow: var(--ombre);
-  }
-
-  h1 {
-    margin: 0;
-    font-size: 1.375rem;
-    font-weight: 600;
-    letter-spacing: 0.32em;
-    padding-left: 0.32em; /* compense l'espacement après la dernière lettre */
-  }
-
-  .version {
-    margin: 0;
-    color: var(--texte-2);
-    font-size: 0.8125rem;
   }
 
   .alerte {
-    max-width: 22rem;
-    margin: 16px 0 0;
+    margin: 12px 16px 0;
     padding: 12px 16px;
     border-radius: 12px;
     background: var(--surface-1);
@@ -113,11 +262,27 @@
     text-align: center;
   }
 
+  .toast {
+    position: fixed;
+    inset: auto 0 calc(var(--barre) + 16px);
+    z-index: 4;
+    width: fit-content;
+    margin: 0 auto;
+    padding: 12px 18px;
+    border-radius: 14px;
+    background: linear-gradient(180deg, var(--surface-2), var(--surface-1));
+    box-shadow: var(--ombre);
+    color: var(--credit);
+    font-weight: 600;
+    animation: entree 180ms ease-out;
+  }
+
   .maj {
     position: fixed;
     left: 12px;
     right: 12px;
-    bottom: calc(env(safe-area-inset-bottom) + 12px);
+    bottom: calc(var(--barre) + 12px);
+    z-index: 4;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -137,7 +302,6 @@
     border-radius: 12px;
     background: var(--accent);
     color: var(--fond);
-    font: inherit;
     font-weight: 600;
   }
 
