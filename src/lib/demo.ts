@@ -3,6 +3,7 @@
 import type { Categorie } from './categories.ts';
 import type { Compte, TypeCompte } from './comptes.ts';
 import { ajouterJours } from './dates.ts';
+import type { Echeance } from './echeances.ts';
 import type { OperationComplete } from './operations.ts';
 import type { Sens } from './soldes.ts';
 
@@ -10,6 +11,7 @@ export interface DonneesDemo {
   comptes: Compte[];
   categories: Categorie[];
   operations: OperationComplete[];
+  echeances: Echeance[];
 }
 
 const COMPTES: [string, TypeCompte, number][] = [
@@ -88,5 +90,20 @@ export function genererDemo(jour: string): DonneesDemo {
       operations.push({ id: crypto.randomUUID(), compteId: comptes[c]!.id, date: ajouterJours(jour, -avant), sens: i === 0 ? 'debit' : 'credit', montant, virementId, ...(note ? { note } : {}) });
     }
   }
-  return { comptes, categories, operations };
+  // Échéancier : une échéance due aujourd'hui (à valider), une dans 5 jours (prévisionnel seulement).
+  const echeance = (nom: string, cat: number, montant: number, avant: number): Echeance => ({
+    id: crypto.randomUUID(),
+    nom,
+    compteId: comptes[0]!.id,
+    categorieId: categories[cat]!.id,
+    sens: 'debit',
+    montant,
+    frequence: 'mensuelle',
+    debut: ajouterJours(jour, avant),
+    fin: { type: 'aucune' },
+    prochaine: 0,
+    archive: false,
+  });
+  const echeances = [echeance('LOYER EXEMPLE', 1, 65_000, 0), echeance('ABONNEMENT EXEMPLE', 2, 7_500, 5)];
+  return { comptes, categories, operations, echeances };
 }

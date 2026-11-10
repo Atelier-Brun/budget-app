@@ -4,7 +4,8 @@ import { describe, expect, it } from 'vitest';
 import { creerCoffre, ouvrirAvecCode, versB64 } from './coffre.ts';
 import { genererDemo } from './demo.ts';
 import { creerFichier, dechiffrerTout, lireFichier, nomFichier, valider, type Donnees } from './sauvegarde.ts';
-import { lireBrut, ouvrirBase, remplacer, type Clair } from './stockage.ts';
+import { chiffrer, versB64 as b64 } from './coffre.ts';
+import { DONNEES, lireBrut, ouvrirBase, remplacer, type Clair } from './stockage.ts';
 
 const JOUR = '2026-11-10';
 const fictif = (): Donnees => ({ ...genererDemo(JOUR), meta: [{ cle: 'derniere-saisie' }] });
@@ -26,11 +27,12 @@ describe('sauvegarde', () => {
 
   it('aller-retour : fichier → code → données identiques ; aucune donnée en clair dans le fichier', async () => {
     const { texte, donnees } = await preparer();
-    expect(texte).not.toMatch(/FICTI|COURANT|EPARGNE|montant|nom/i);
+    // Les blocs base64 (chiffrés) sont retirés : ils peuvent contenir ces lettres par hasard.
+    expect(texte.replace(/"[A-Za-z0-9+/=]{12,}"/g, '""')).not.toMatch(/FICTI|COURANT|EPARGNE|montant|nom/i);
     const f = lireFichier(texte);
     expect(f.date).toBe(JOUR);
     const lu = await dechiffrerTout(await ouvrirAvecCode(f.coffre, '48021573'), f.donnees, { date: f.date, chiffre: f.resume });
-    const tri = (d: Donnees) => JSON.stringify(Object.values(d).map((l: { id?: string; cle?: string }[]) => [...l].sort((a, b) => ((a.id ?? a.cle)! < (b.id ?? b.cle)! ? -1 : 1))));
+    const tri = (d: Donnees) => JSON.stringify(DONNEES.map((m) => d[m]).map((l: { id?: string; cle?: string }[]) => [...l].sort((a, b) => ((a.id ?? a.cle)! < (b.id ?? b.cle)! ? -1 : 1))));
     expect(tri(lu)).toBe(tri(donnees));
   });
 
@@ -71,6 +73,29 @@ describe('sauvegarde', () => {
     for (const c of casser) {
       const x = structuredClone(fictif());
       c(x);
+      expect(() => valider(x as unknown as Clair)).toThrow('Contenu de la sauvegarde invalide');
+    }
+  });
+});
+
+describe('compatibilité 0.3.0', () => {
+  it('fichier de la 0.3.0 (sans échéancier, résumé sans échéances) : accepté, échéancier vide', async () => {
+    const { texte, cle, donnees } = await preparer();
+    const f = JSON.parse(texte);
+    delete f.donnees.echeances;
+    const { echeances: _, ...nb } = Object.fromEntries(DONNEES.map((m) => [m, f.donnees[m]?.length ?? 0]));
+    const r = await chiffrer(cle, 'resume', JOUR, { date: JOUR, nb });
+    f.resume = { iv: b64(r.iv), d: b64(r.d) };
+    const lu = lireFichier(JSON.stringify(f));
+    const d = await dechiffrerTout(cle, lu.donnees, { date: lu.date, chiffre: lu.resume });
+    expect(d.echeances).toEqual([]);
+    expect(d.operations).toHaveLength(donnees.operations.length);
+  });
+
+  it('échéance invalide ou liée à un compte absent : refus', () => {
+    for (const casser of [(x: Donnees) => (x.echeances[0]!.compteId = 'absent'), (x: Donnees) => (x.echeances[0]!.prochaine = -1), (x: Donnees) => (x.echeances[0]!.montant = 0)]) {
+      const x = structuredClone(fictif());
+      casser(x);
       expect(() => valider(x as unknown as Clair)).toThrow('Contenu de la sauvegarde invalide');
     }
   });

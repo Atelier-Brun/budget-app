@@ -14,7 +14,7 @@ async function sauvegarder(page: Page, nom: string, photo = false): Promise<stri
   await nav(page).getByRole('button', { name: 'Réglages' }).click();
   await page.getByRole('button', { name: /^Sauvegarde/ }).click();
   await expect(page.getByRole('button', { name: 'Sauvegarder' })).toBeEnabled();
-  if (photo) await capture(page, '6-sauvegarde');
+  if (photo) await capture(page, '030-6-sauvegarde');
   const telechargement = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Sauvegarder' }).click();
   const d = await telechargement;
@@ -72,7 +72,8 @@ test('sauvegarder → effacer → restaurer → données identiques (test obliga
 
   const chemin = await sauvegarder(page, 'sauvegarde-1', true);
   const contenu = readFileSync(chemin, 'utf8');
-  expect(contenu).not.toMatch(/FICTI|COURSES|Note/i); // rien en clair dans le fichier
+  // Rien en clair dans le fichier (blocs base64 chiffrés retirés : ils peuvent contenir ces lettres par hasard).
+  expect(contenu.replace(/"[A-Za-z0-9+/=]{12,}"/g, '""')).not.toMatch(/FICTI|COURSES|Note/i);
   await nav(page).getByRole('button', { name: 'Accueil' }).click();
   await expect(page.getByText('Aucune sauvegarde externe.')).toHaveCount(0); // rappel levé
 
@@ -86,7 +87,7 @@ test('sauvegarder → effacer → restaurer → données identiques (test obliga
   const apercu = page.getByRole('group', { name: 'Aperçu de la sauvegarde' });
   await expect(apercu).toContainText('5 opérations · 3 comptes · 1 catégorie');
   await expect(apercu).toContainText('Ces données seront installées sur cet appareil.');
-  await capture(page, '7-restauration-apercu');
+  await capture(page, '030-7-restauration-apercu');
   await apercu.getByRole('button', { name: 'Restaurer' }).click();
   await expect(nav(page)).toBeVisible();
 

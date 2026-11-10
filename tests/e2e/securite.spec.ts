@@ -44,7 +44,7 @@ test('création : solidité, confirmation, code de secours vérifié ; données 
   for (let i = 0; i < 6; i++) await page.keyboard.press('Backspace');
   await page.keyboard.type(CODE);
   await expect(page.getByText('Solidité : Correct')).toBeVisible();
-  await capture(page, '1-creation-code');
+  await capture(page, '030-1-creation-code');
   await page.keyboard.press('Enter');
   await saisirCode(page, '99999999'); // confirmation différente
   await expect(page.getByText('Les deux codes sont différents. Recommencez.')).toBeVisible();
@@ -53,7 +53,7 @@ test('création : solidité, confirmation, code de secours vérifié ; données 
 
   const secours = (await page.getByLabel('Code de secours', { exact: true }).textContent())!;
   expect(secours).toMatch(/^([2-9A-HJ-NP-Z]{4}-){5}[2-9A-HJ-NP-Z]{4}$/);
-  await capture(page, '2-code-secours');
+  await capture(page, '030-2-code-secours');
   await page.getByRole('button', { name: 'Je l’ai noté' }).click();
   await page.getByLabel(/Recopiez le groupe/).fill('ZZZZ');
   await page.getByRole('button', { name: 'Valider' }).click();
@@ -85,11 +85,11 @@ test('verrouillage : bouton, arrière-plan (contenu masqué), 2 min sans geste ;
   await compte(page, 'Compte fictif', { solde: '100' });
 
   await nav(page).getByRole('button', { name: 'Réglages' }).click();
-  await capture(page, '5-reglages');
+  await capture(page, '030-5-reglages');
   await page.getByRole('button', { name: 'Verrouiller maintenant' }).click();
   await expect(page.getByRole('heading', { name: 'Saisissez votre code' })).toBeVisible();
   await expect(page.getByText('COMPTE FICTIF')).toHaveCount(0);
-  await capture(page, '3-verrouillage');
+  await capture(page, '030-3-verrouillage');
   await deverrouiller(page);
   await expect(solde(page, 'COMPTE FICTIF')).toContainText('100,00 €');
 
@@ -114,7 +114,7 @@ test('verrouillage : bouton, arrière-plan (contenu masqué), 2 min sans geste ;
   }
   await expect(page.getByText('Trop d’erreurs. Nouvel essai possible dans 30 s.')).toBeVisible();
   await expect(page.getByRole('button', { name: '1', exact: true })).toBeDisabled();
-  await capture(page, '4-delai');
+  await capture(page, '030-4-delai');
   await page.reload();
   await expect(page.getByText(/Nouvel essai possible dans/)).toBeVisible(); // le délai survit au rechargement
   await page.clock.fastForward('00:31');

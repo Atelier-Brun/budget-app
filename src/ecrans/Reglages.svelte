@@ -5,7 +5,10 @@
   let {
     persistant,
     derniere,
+    dernierPointage,
     oncomptes,
+    onecheancier,
+    onpointage,
     oncategories,
     oncode,
     onsauvegarde,
@@ -15,7 +18,11 @@
     persistant: boolean | null;
     /** Date de la dernière sauvegarde externe, ou null. */
     derniere: string | null;
+    /** Date du dernier pointage, ou null. */
+    dernierPointage: string | null;
     oncomptes: () => void;
+    onecheancier: () => void;
+    onpointage: () => void;
     oncategories: () => void;
     oncode: () => void;
     onsauvegarde: () => void;
@@ -45,6 +52,17 @@
     <li>
       <button type="button" class="ligne" onclick={oncategories}>
         <span>Catégories</span><span class="secondaire" aria-hidden="true">›</span>
+      </button>
+    </li>
+    <li>
+      <button type="button" class="ligne" onclick={onecheancier}>
+        <span>Échéancier</span><span class="secondaire" aria-hidden="true">›</span>
+      </button>
+    </li>
+    <li>
+      <button type="button" class="ligne" onclick={onpointage}>
+        <span>Pointage</span>
+        <span class="secondaire">{dernierPointage ? formaterDate(dernierPointage) : 'Aucun'} ›</span>
       </button>
     </li>
   </ul>

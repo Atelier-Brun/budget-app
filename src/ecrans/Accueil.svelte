@@ -1,16 +1,38 @@
 <script lang="ts">
-  // Accueil : soldes du jour par type, sous-total par type, pas de total général.
+  // Accueil : échéances à valider, rappel de pointage, alertes du prévisionnel, soldes du jour par type,
+  // sous-total par type (pas de total général), fin de mois prévue par compte.
   import Logo from '../composants/Logo.svelte';
   import { afficherSolde, LIBELLES, TYPES, trierComptes, type Compte } from '../lib/comptes';
-  import { aujourdHui } from '../lib/dates';
+  import { aujourdHui, formaterDate } from '../lib/dates';
+  import type { Prevision } from '../lib/previsionnel';
   import { calculerSolde, type Operation } from '../lib/soldes';
 
   let {
     comptes,
     operations,
+    previsions,
+    nbAValider,
+    pointage,
     onouvrir,
     oncreer,
-  }: { comptes: Compte[]; operations: Operation[]; onouvrir: (id: string) => void; oncreer: () => void } = $props();
+    onavalider,
+    onpointage,
+  }: {
+    comptes: Compte[];
+    operations: Operation[];
+    previsions: Map<string, Prevision>;
+    nbAValider: number;
+    /** Rappel de pointage à afficher. */
+    pointage: boolean;
+    onouvrir: (id: string) => void;
+    oncreer: () => void;
+    onavalider: () => void;
+    onpointage: () => void;
+  } = $props();
+
+  const alertes = $derived(
+    comptes.filter((c) => previsions.get(c.id)?.alerte).map((c) => ({ c, p: previsions.get(c.id)! })),
+  );
 
   const sections = $derived.by(() => {
     const jour = aujourdHui();
@@ -32,6 +54,22 @@
     <h1 class="marque">BUDGET</h1>
   </header>
 
+  {#if nbAValider > 0}
+    <button type="button" class="bandeau-action carte" onclick={onavalider}>
+      <span><span class="point" aria-hidden="true"></span>{nbAValider} échéance{nbAValider > 1 ? 's' : ''} à valider</span><span aria-hidden="true">›</span>
+    </button>
+  {/if}
+  {#if pointage && sections.length > 0}
+    <button type="button" class="bandeau-action carte" onclick={onpointage}>
+      <span>Pointage de la semaine à faire</span><span aria-hidden="true">›</span>
+    </button>
+  {/if}
+  {#each alertes as { c, p } (c.id)}
+    <p class="alerte-prevision carte" role="alert">
+      {c.nom} : solde prévu négatif le {formaterDate(p.dateMin)} ({montant(c.type, p.min)})
+    </p>
+  {/each}
+
   {#if sections.length === 0}
     <div class="vide carte">
       <p>Aucun compte actif. Le premier compte courant créé devient le compte principal.</p>
@@ -50,7 +88,12 @@
           <li>
             <button type="button" class="compte carte" onclick={() => onouvrir(c.id)}>
               <span class="nom">{c.nom}{#if c.principal}<span class="badge">Principal</span>{/if}</span>
-              <span class="solde" class:negatif={negatif(c.type, c.solde)}>{montant(c.type, c.solde)}</span>
+              <span class="droite">
+                <span class="solde" class:negatif={negatif(c.type, c.solde)}>{montant(c.type, c.solde)}</span>
+                {#if previsions.get(c.id) && previsions.get(c.id)!.fin !== c.solde}
+                  <span class="prevu secondaire">fin de mois : {montant(c.type, previsions.get(c.id)!.fin)}</span>
+                {/if}
+              </span>
             </button>
           </li>
         {/each}
@@ -63,6 +106,46 @@
 </div>
 
 <style>
+  .bandeau-action {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    min-height: 52px;
+    margin-bottom: 12px;
+    padding: 0 16px;
+    border: 0;
+    text-align: left;
+    font-weight: 600;
+  }
+
+  .point {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    margin-right: 10px;
+    border-radius: 50%;
+    background: var(--accent);
+    vertical-align: middle;
+  }
+
+  .alerte-prevision {
+    margin: 0 0 12px;
+    padding: 12px 16px;
+    color: var(--debit);
+    font-size: 0.9375rem;
+  }
+
+  .droite {
+    display: grid;
+    justify-items: end;
+    gap: 2px;
+  }
+
+  .prevu {
+    font-size: 0.75rem;
+  }
+
   .marque {
     letter-spacing: 0.24em;
   }

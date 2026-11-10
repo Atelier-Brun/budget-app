@@ -5,7 +5,11 @@
   import Barre from './composants/Barre.svelte';
   import Logo from './composants/Logo.svelte';
   import type { Restaure } from './composants/Restauration.svelte';
+  import AValider from './ecrans/AValider.svelte';
   import ChangerCode from './ecrans/ChangerCode.svelte';
+  import Echeancier from './ecrans/Echeancier.svelte';
+  import FicheEcheance from './ecrans/FicheEcheance.svelte';
+  import Pointage from './ecrans/Pointage.svelte';
   import Creation from './ecrans/Creation.svelte';
   import Deverrouillage from './ecrans/Deverrouillage.svelte';
   import Sauvegarde from './ecrans/Sauvegarde.svelte';
@@ -23,9 +27,14 @@
   import { ErreurCoffre, type Coffre } from './lib/coffre';
   import { ajouterJours, aujourdHui, formaterDate } from './lib/dates';
   import { genererDemo } from './lib/demo';
+  import { aValider, idOperation, type Echeance, type Occurrence } from './lib/echeances';
+  import { CORRECTION, pointageDu } from './lib/pointage';
+  import { prevoir } from './lib/previsionnel';
+  import { calculerSolde, verifierOperation } from './lib/soldes';
   import type { OperationComplete } from './lib/operations';
   import { ErreurSauvegarde } from './lib/sauvegarde';
   import {
+    copierAvantMigration,
     copierInterne,
     demanderPersistance,
     DONNEES,
@@ -50,7 +59,11 @@
     | { nom: 'categories' }
     | { nom: 'categorie'; categorie: Categorie }
     | { nom: 'code' }
-    | { nom: 'sauvegarde' };
+    | { nom: 'sauvegarde' }
+    | { nom: 'avalider' }
+    | { nom: 'pointage' }
+    | { nom: 'echeancier' }
+    | { nom: 'echeance'; echeance: Echeance };
 
   /** Verrouillage automatique après 2 min sans geste (et dès que l'app passe en arrière-plan). */
   const INACTIVITE = 2 * 60 * 1000;
@@ -72,6 +85,9 @@
   let comptes = $state<Compte[]>([]);
   let categories = $state<Categorie[]>([]);
   let operations = $state<OperationComplete[]>([]);
+  let echeances = $state<Echeance[]>([]);
+  /** Date du dernier pointage (magasin « meta », chiffré). */
+  let dernierPointage = $state<string | null>(null);
   let ecran = $state<Ecran>({ nom: 'accueil' });
   let saisie = $state(false);
   /** Modification depuis le carnet : l'opération, ou les deux écritures du virement. */
@@ -88,14 +104,16 @@
 
   async function charger(base: IDBDatabase, k: CryptoKey) {
     type Meta = { cle: string; compteId?: string; versId?: string; date?: string };
-    const [c, cat, ops, meta] = await Promise.all([
+    const [c, cat, ops, meta, ech] = await Promise.all([
       lireChiffre<Compte>(base, k, 'comptes'),
       lireChiffre<Categorie>(base, k, 'categories'),
       lireChiffre<OperationComplete>(base, k, 'operations'),
       lireChiffre<Meta>(base, k, 'meta'),
+      lireChiffre<Echeance>(base, k, 'echeances'),
     ]);
     if (cle !== k) return; // verrouillée entre-temps : rien ne doit réapparaître
-    [comptes, categories, operations] = [c, cat, ops];
+    [comptes, categories, operations, echeances] = [c, cat, ops, ech];
+    dernierPointage = meta.find((m) => m.cle === 'pointage')?.date ?? null;
     const d = meta.find((m) => m.cle === 'derniere-saisie');
     dernier = { ...(d?.compteId ? { compteId: d.compteId } : {}), ...(d?.versId ? { versId: d.versId } : {}) };
     derniere = meta.find((m) => m.cle === 'sauvegarde-externe')?.date ?? null;
@@ -131,7 +149,7 @@
 
   /** Verrouillage : la clé et toutes les données quittent la mémoire, l'écran est remplacé. */
   function verrouiller() {
-    [cle, comptes, categories, operations, dernier, derniere] = [null, [], [], [], {}, null];
+    [cle, comptes, categories, operations, echeances, dernier, derniere, dernierPointage] = [null, [], [], [], [], {}, null, null];
     fermerSaisie();
     [ecran, message, etat] = [{ nom: 'accueil' }, '', 'verrouille'];
   }
@@ -195,6 +213,68 @@
     }
   }
 
+  /**
+   * Validation d'une échéance : l'opération (identifiant fixe : une seconde validation est refusée par la base)
+   * et l'avancement de l'échéance, dans une seule transaction.
+   */
+  async function validerEcheance(e: Echeance, o: Occurrence, montant: number, date: string): Promise<string | null> {
+    const compte = comptes.find((c) => c.id === e.compteId);
+    const op: OperationComplete = {
+      id: idOperation(e, o),
+      compteId: e.compteId,
+      ...(e.categorieId ? { categorieId: e.categorieId } : {}),
+      date,
+      sens: e.sens,
+      montant,
+      note: e.nom,
+    };
+    const refus = compte ? verifierOperation(op, compte) : 'Compte introuvable.';
+    if (refus) return refus;
+    const ok = await modifier(['operations', 'echeances'], (tx) => {
+      tx.objectStore('operations').add(op);
+      tx.objectStore('echeances').put({ ...$state.snapshot(e), prochaine: o.n + 1 });
+    });
+    if (ok) annoncer('Échéance validée');
+    return ok ? null : alerte;
+  }
+
+  async function ignorerEcheance(e: Echeance, o: Occurrence): Promise<boolean> {
+    const ok = await modifier(['echeances'], (tx) => tx.objectStore('echeances').put({ ...$state.snapshot(e), prochaine: o.n + 1 }));
+    if (ok) annoncer('Échéance ignorée');
+    return ok;
+  }
+
+  /** Pointage : une opération CORRECTION par écart (catégorie créée au besoin) et la date, en une transaction. */
+  async function validerPointage(reels: Map<string, number>): Promise<string | null> {
+    const jour = aujourdHui();
+    const existante = categories.find((c) => c.nom === CORRECTION);
+    const nouvelle: Categorie | null = existante ? null : { id: crypto.randomUUID(), nom: CORRECTION, sens: 'debit', archive: false };
+    const categorieId = (existante ?? nouvelle)!.id;
+    const ops: OperationComplete[] = [];
+    for (const [id, reel] of reels) {
+      const compte = comptes.find((c) => c.id === id);
+      if (!compte) continue;
+      const ecart = reel - calculerSolde(compte, operations, jour);
+      if (ecart === 0) continue;
+      const op: OperationComplete = { id: crypto.randomUUID(), compteId: id, categorieId, date: jour, sens: ecart > 0 ? 'credit' : 'debit', montant: Math.abs(ecart), note: 'Pointage' };
+      const refus = verifierOperation(op, compte);
+      if (refus) return `${compte.nom} : ${refus}`;
+      ops.push(op);
+    }
+    const ok = await modifier(['operations', 'categories', 'meta'], (tx) => {
+      if (nouvelle && ops.length) tx.objectStore('categories').put(nouvelle);
+      for (const op of ops) tx.objectStore('operations').add(op);
+      tx.objectStore('meta').put({ cle: 'pointage', date: jour });
+    });
+    if (!ok) return alerte;
+    aller({ nom: 'accueil' });
+    annoncer(ops.length ? `Pointage enregistré : ${ops.length} correction${ops.length > 1 ? 's' : ''}` : 'Pointage enregistré : aucun écart');
+    return null;
+  }
+
+  const previsions = $derived(prevoir(comptes, operations, echeances, aujourdHui()));
+  const nbAValider = $derived(echeances.filter((e) => aValider(e, aujourdHui())).length);
+
   const noterSauvegarde = (date: string) => modifier(['meta'], (tx) => tx.objectStore('meta').put({ cle: 'sauvegarde-externe', date }));
 
   const rappel = $derived(
@@ -215,8 +295,8 @@
   function remplirDemo(): Promise<boolean> {
     if (!demo) return Promise.resolve(false); // garde-fou : jamais dans la base réelle
     const d = genererDemo(aujourdHui());
-    return modifier(['comptes', 'categories', 'operations'], (tx) => {
-      for (const m of ['comptes', 'categories', 'operations'] as const) {
+    return modifier(['comptes', 'categories', 'operations', 'echeances'], (tx) => {
+      for (const m of ['comptes', 'categories', 'operations', 'echeances'] as const) {
         const magasin = tx.objectStore(m);
         magasin.clear();
         for (const x of d[m]) magasin.put(x);
@@ -305,7 +385,10 @@
       if (etat === 'ouvert' && Date.now() - dernierGeste >= INACTIVITE) verrouiller();
     }, 5000);
     // Bases séparées : la démo ne lit ni n'écrit jamais la base réelle.
-    ouvrirBase(demo ? 'budget-demo' : 'budget', () => {
+    const nomBase = demo ? 'budget-demo' : 'budget';
+    // Copie interne des données (déjà chiffrées) avant toute migration, puis ouverture (et migration).
+    copierAvantMigration(nomBase).then(() =>
+    ouvrirBase(nomBase, () => {
       db = null;
       alerte = 'BUDGET a été mis à jour dans une autre fenêtre : rechargez l’app.';
     })
@@ -323,7 +406,7 @@
         }
         persistant = await demanderPersistance();
       })
-      .catch((e: unknown) => (alerte = traduire(e).message));
+      .catch((e: unknown) => (alerte = traduire(e).message)));
     return () => clearInterval(horloge);
   });
 </script>
@@ -353,7 +436,59 @@
 
 <main>
   {#if ecran.nom === 'accueil'}
-    <Accueil {comptes} {operations} onouvrir={ouvrir('accueil')} oncreer={creer('accueil')} />
+    <Accueil
+      {comptes}
+      {operations}
+      {previsions}
+      {nbAValider}
+      pointage={pointageDu(dernierPointage, aujourdHui())}
+      onouvrir={ouvrir('accueil')}
+      oncreer={creer('accueil')}
+      onavalider={() => aller({ nom: 'avalider' })}
+      onpointage={() => aller({ nom: 'pointage' })}
+    />
+  {:else if ecran.nom === 'avalider'}
+    <AValider {echeances} {comptes} onvalider={validerEcheance} onignorer={ignorerEcheance} onretour={() => aller({ nom: 'accueil' })} />
+  {:else if ecran.nom === 'pointage'}
+    <Pointage {comptes} {operations} dernier={dernierPointage} onvalider={validerPointage} onretour={() => aller({ nom: 'accueil' })} />
+  {:else if ecran.nom === 'echeancier'}
+    <Echeancier
+      {echeances}
+      {comptes}
+      onouvrir={(id) => {
+        const e = echeances.find((x) => x.id === id);
+        if (e) aller({ nom: 'echeance', echeance: e });
+      }}
+      oncreer={() =>
+        aller({
+          nom: 'echeance',
+          echeance: {
+            id: crypto.randomUUID(),
+            nom: '',
+            compteId: comptes.find((c) => c.principal && !c.archive)?.id ?? '',
+            sens: 'debit',
+            montant: 0,
+            frequence: 'mensuelle',
+            debut: aujourdHui(),
+            fin: { type: 'aucune' },
+            prochaine: 0,
+            archive: false,
+          },
+        })}
+      onretour={() => aller({ nom: 'reglages' })}
+    />
+  {:else if ecran.nom === 'echeance'}
+    {#key ecran.echeance.id}
+      <FicheEcheance
+        echeance={ecran.echeance}
+        {echeances}
+        {comptes}
+        {categories}
+        onenregistrer={(e) => modifier(['echeances'], (tx) => tx.objectStore('echeances').put($state.snapshot(e)))}
+        onsupprimer={(id) => modifier(['echeances'], (tx) => tx.objectStore('echeances').delete(id))}
+        onretour={() => aller({ nom: 'echeancier' })}
+      />
+    {/key}
   {:else if ecran.nom === 'carnet'}
     <Carnet
       {comptes}
@@ -369,7 +504,10 @@
     <Reglages
       {persistant}
       {derniere}
+      {dernierPointage}
       oncomptes={() => aller({ nom: 'comptes' })}
+      onecheancier={() => aller({ nom: 'echeancier' })}
+      onpointage={() => aller({ nom: 'pointage' })}
       oncategories={() => aller({ nom: 'categories' })}
       oncode={() => aller({ nom: 'code' })}
       onsauvegarde={() => aller({ nom: 'sauvegarde' })}
@@ -428,7 +566,11 @@
 </main>
 
 <Barre
-  actif={ecran.nom === 'accueil' || ecran.nom === 'carnet' ? ecran.nom : ecran.nom === 'compte' && ecran.depuis === 'accueil' ? 'accueil' : 'reglages'}
+  actif={ecran.nom === 'accueil' || ecran.nom === 'carnet'
+    ? ecran.nom
+    : (ecran.nom === 'compte' && ecran.depuis === 'accueil') || ecran.nom === 'avalider' || ecran.nom === 'pointage'
+      ? 'accueil'
+      : 'reglages'}
   onaller={(o) => aller({ nom: o })}
   onplus={() => ouvrirSaisie()}
 />

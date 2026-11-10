@@ -91,7 +91,7 @@ export async function recharger(page: Page) {
 /** Capture d'écran après la fin des animations d'entrée (≤ 200 ms). */
 export async function capture(page: Page, nom: string) {
   await page.waitForTimeout(300);
-  await page.screenshot({ path: `test-results/captures/budget-030-${nom}.png` });
+  await page.screenshot({ path: `test-results/captures/budget-${nom}.png` });
 }
 
 /** Toute la console et les erreurs de la page : rien ne doit y apparaître (ni code, ni erreur). */

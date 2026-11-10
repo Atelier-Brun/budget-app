@@ -45,17 +45,17 @@ function comptes(page: Page, nom: string, valeur?: object) {
 
 const FICTIF = { id: 'id-fictif-1', nom: 'COMPTE FICTIF', soldeDepart: 12_345, dateDepart: '2026-11-10' };
 
-test('l’app crée sa base v2 ; la démo a la sienne et ne touche pas à la base réelle', async ({ page }) => {
+test('l’app crée sa base v3 ; la démo a la sienne et ne touche pas à la base réelle', async ({ page }) => {
   await page.goto(APP);
   expect(await decrire(page, 'budget')).toEqual({
-    version: 2,
-    magasins: ['categories', 'coffre', 'comptes', 'copies', 'meta', 'operations'],
+    version: 3,
+    magasins: ['categories', 'coffre', 'comptes', 'copies', 'echeances', 'meta', 'operations'],
   });
   await comptes(page, 'budget', FICTIF);
 
   await page.goto(DEMO);
   await creerCode(page);
-  expect((await decrire(page, 'budget-demo')).version).toBe(2);
+  expect((await decrire(page, 'budget-demo')).version).toBe(3);
   await expect(page.getByRole('button', { name: /^COMPTE COURANT/ })).toBeVisible(); // démo remplie
   expect(await comptes(page, 'budget-demo')).not.toContainEqual(FICTIF);
   expect(await comptes(page, 'budget')).toEqual([FICTIF]); // base réelle intacte

@@ -121,7 +121,7 @@ describe('ecrire', () => {
         tx.objectStore('a').add({ id: 'x', n: 3 }); // doublon → échec
       }),
     );
-    expect(code).toBe('inconnue');
+    expect(code).toBe('doublon');
     expect(await lireTout(db, 'a')).toEqual([{ id: 'x', n: 1 }]);
     db.close();
   });
@@ -149,6 +149,7 @@ describe('ecrire', () => {
 describe('traduire', () => {
   it('messages clairs selon l’erreur du navigateur, sans détail technique', () => {
     expect(traduire(new DOMException('x', 'QuotaExceededError')).code).toBe('plein');
+    expect(traduire(new DOMException('x', 'ConstraintError')).message).toBe('Déjà enregistré : rien n’a été modifié.');
     expect(traduire(new DOMException('x', 'VersionError')).code).toBe('trop-recente');
     expect(traduire(null).code).toBe('inconnue');
     const e = traduire(new DOMException('détail interne', 'UnknownError'));
@@ -187,12 +188,12 @@ describe('stockage chiffré (0.3.0)', async () => {
   const { creerCoffre } = await import('./coffre.ts');
   const { copierInterne, COPIES_MAX, ecrireChiffre, lireBrut, lireChiffre, remplacer } = await import('./stockage.ts');
 
-  it('v2 : ajoute coffre et copies sans toucher aux données v1', async () => {
+  it('v2 puis v3 : ajoutent coffre, copies, échéances sans toucher aux données v1', async () => {
     const db1 = await ouvrir(MIGRATIONS.slice(0, 1));
     await ecrire(db1, ['comptes'], (tx) => void tx.objectStore('comptes').put({ id: 'a', nom: 'FICTIF' }));
     db1.close();
     const db = await ouvrir();
-    expect([...db.objectStoreNames].sort()).toEqual(['categories', 'coffre', 'comptes', 'copies', 'meta', 'operations']);
+    expect([...db.objectStoreNames].sort()).toEqual(['categories', 'coffre', 'comptes', 'copies', 'echeances', 'meta', 'operations']);
     expect(await lireTout(db, 'comptes')).toEqual([{ id: 'a', nom: 'FICTIF' }]);
     db.close();
   });
@@ -204,7 +205,7 @@ describe('stockage chiffré (0.3.0)', async () => {
       tx.objectStore('meta').put({ cle: 'derniere-saisie', compteId: 'a' });
     });
     const { coffre, cle } = await creerCoffre('48021573', 1000);
-    const clair = { comptes: await lireTout<object>(db, 'comptes'), categories: [], operations: [], meta: await lireTout<object>(db, 'meta') };
+    const clair = { comptes: await lireTout<object>(db, 'comptes'), categories: [], operations: [], meta: await lireTout<object>(db, 'meta'), echeances: [] };
     await remplacer(db, cle, clair, coffre);
     const brut = await lireBrut(db);
     expect(Object.keys(brut.comptes[0]!).sort()).toEqual(['d', 'id', 'iv']);
@@ -235,11 +236,54 @@ describe('stockage chiffré (0.3.0)', async () => {
   it(`copies internes : contenu brut chiffré, ${COPIES_MAX} plus récentes gardées`, async () => {
     const db = await ouvrir();
     const { coffre, cle } = await creerCoffre('48021573', 1000);
-    await remplacer(db, cle, { comptes: [{ id: 'a', nom: 'X' }], categories: [], operations: [], meta: [] }, coffre);
+    await remplacer(db, cle, { comptes: [{ id: 'a', nom: 'X' }], categories: [], operations: [], meta: [], echeances: [] }, coffre);
     for (let i = 1; i <= 9; i++) await copierInterne(db, new Date(Date.UTC(2026, 10, i)));
     const copies = await lireTout<{ id: string; donnees: { comptes: unknown[] } }>(db, 'copies');
     expect(copies.map((c) => c.id.slice(0, 10))).toEqual(['03', '04', '05', '06', '07', '08', '09'].map((j) => `2026-11-${j}`));
     expect(copies[0]!.donnees.comptes).toEqual((await lireBrut(db)).comptes);
     db.close();
+  });
+});
+
+describe('mise à jour 0.3.0 → 0.4.0', async () => {
+  const { creerCoffre } = await import('./coffre.ts');
+  const { copierAvantMigration, lireChiffre, remplacer, lireBrut } = await import('./stockage.ts');
+
+  it('copie interne AVANT la migration, puis données chiffrées v2 relues sans perte en v3', async () => {
+    const v2 = MIGRATIONS.slice(0, 2);
+    const db2 = await ouvrir(v2);
+    const { coffre, cle } = await creerCoffre('48021573', 1000);
+    const clair = { comptes: [{ id: 'a', nom: 'FICTIF' }], categories: [{ id: 'k', nom: 'K' }], operations: [{ id: 'o', compteId: 'a' }], meta: [{ cle: 'derniere-saisie', compteId: 'a' }] };
+    // Écriture exactement comme la 0.3.0 (sans magasin echeances).
+    await ecrire(db2, ['coffre'], (tx) => void tx.objectStore('coffre').put(coffre));
+    const { sceller } = await import('./stockage.ts');
+    for (const [m, l] of Object.entries(clair)) {
+      const s = await Promise.all(l.map((v) => sceller(cle, m, v)));
+      await ecrire(db2, [m], (tx) => s.forEach((v) => tx.objectStore(m).put(v)));
+    }
+    const avant = await lireBrut(db2);
+    expect(avant.echeances).toEqual([]); // magasin absent en v2 : lu comme vide
+    db2.close();
+
+    expect(await copierAvantMigration('test', MIGRATIONS.length, fabrique)).toBe(true);
+    const db = await ouvrir();
+    expect(db.version).toBe(3);
+    const copies = await lireTout<{ donnees: Record<string, unknown[]> }>(db, 'copies');
+    expect(copies).toHaveLength(1);
+    expect(copies[0]!.donnees['operations']).toEqual(avant.operations);
+    for (const [m, l] of Object.entries(clair)) expect(await lireChiffre(db, cle, m as 'comptes')).toEqual(l);
+    expect(await lireChiffre(db, cle, 'echeances')).toEqual([]);
+    expect(await copierAvantMigration('test', MIGRATIONS.length, fabrique)).toBe(false); // déjà à jour : rien
+    await remplacer(db, cle, { ...clair, echeances: [{ id: 'e' }] });
+    expect(await lireChiffre(db, cle, 'echeances')).toEqual([{ id: 'e' }]);
+    db.close();
+  });
+
+  it('pas de copie si la base n’existe pas encore ou n’a pas de copies (v1)', async () => {
+    expect(await copierAvantMigration('absente', MIGRATIONS.length, fabrique)).toBe(false);
+    expect([...(await fabrique.databases())].map((d) => d.name)).not.toContain('absente');
+    const db1 = await ouvrir(MIGRATIONS.slice(0, 1));
+    db1.close();
+    expect(await copierAvantMigration('test', MIGRATIONS.length, fabrique)).toBe(false);
   });
 });

@@ -7,6 +7,7 @@ import { TYPES, type Compte } from './comptes.ts';
 import { estDateValide } from './dates.ts';
 import { MONTANT_MAX } from './montants.ts';
 import { NOM_MAX } from './noms.ts';
+import { verifierEcheance, type Echeance } from './echeances.ts';
 import { NOTE_MAX, type OperationComplete } from './operations.ts';
 import { verifierOperation } from './soldes.ts';
 import { DONNEES, type Brut, type Clair, type Magasin, type Scelle } from './stockage.ts';
@@ -20,6 +21,7 @@ export interface Donnees {
   categories: Categorie[];
   operations: OperationComplete[];
   meta: { cle: string }[];
+  echeances: Echeance[];
 }
 export interface Fichier {
   demo: boolean;
@@ -41,6 +43,8 @@ const compter = (d: Brut | Clair) => Object.fromEntries(DONNEES.map((m) => [m, d
 const b64 = (c: Chiffre) => ({ iv: versB64(c.iv), d: versB64(c.d) });
 const env64 = (e: Enveloppe) => ({ sel: versB64(e.sel), cle: versB64(e.cle) });
 const champ = (m: string) => (m === 'meta' ? 'cle' : 'id');
+/** Magasins apparus après la 0.3.0 : absents des sauvegardes et copies plus anciennes (lus comme vides). */
+const FACULTATIFS: readonly string[] = ['echeances'];
 
 export async function creerFichier(cle: CryptoKey, coffre: Coffre, donnees: Brut, date: string, demo: boolean): Promise<string> {
   const resume = await chiffrer(cle, 'resume', date, { date, nb: compter(donnees) } satisfies Resume);
@@ -90,7 +94,7 @@ export function lireFichier(contenu: string): Fichier {
     if (!Number.isSafeInteger(it) || (it as number) < 1 || (it as number) > 10 * ITERATIONS) throw new ErreurSauvegarde(NON_RECONNU);
     const brut = {} as Brut;
     for (const m of DONNEES) {
-      const liste = donnees[m];
+      const liste = donnees[m] === undefined && FACULTATIFS.includes(m) ? [] : donnees[m];
       if (!Array.isArray(liste)) throw new ErreurSauvegarde(NON_RECONNU);
       brut[m] = liste.map((r: unknown): Scelle => {
         if (!estObjet(r) || !texte(r[champ(m)], 100)) throw new ErreurSauvegarde(NON_RECONNU);
@@ -113,11 +117,11 @@ export function lireFichier(contenu: string): Fichier {
 export async function dechiffrerTout(cle: CryptoKey, brut: Brut, resume?: { date: string; chiffre: Chiffre }): Promise<Donnees> {
   let clair: Clair;
   try {
-    const listes = await Promise.all(DONNEES.map((m) => Promise.all(brut[m].map((r) => dechiffrer<object>(cle, m, r[champ(m)]!, r)))));
+    const listes = await Promise.all(DONNEES.map((m) => Promise.all((brut[m] ?? []).map((r) => dechiffrer<object>(cle, m, r[champ(m)]!, r)))));
     clair = Object.fromEntries(DONNEES.map((m, i) => [m, listes[i]])) as Clair;
     if (resume) {
       const r = await dechiffrer<Resume>(cle, 'resume', resume.date, resume.chiffre);
-      if (JSON.stringify(r.nb) !== JSON.stringify(compter(brut))) throw new Error();
+      if (DONNEES.some((m) => (r.nb[m] ?? 0) !== clair[m].length)) throw new Error();
     }
   } catch {
     throw new ErreurSauvegarde(INVALIDE);
@@ -161,7 +165,20 @@ export function valider(c: Clair): Donnees {
           (x.note === undefined || (typeof x.note === 'string' && x.note.length <= NOTE_MAX))
         );
       }) &&
-      d.meta.every((x) => estObjet(x) && texte(x.cle, 100));
+      d.meta.every((x) => estObjet(x) && texte(x.cle, 100)) &&
+      uniques(d.echeances) &&
+      d.echeances.every(
+        (x) =>
+          texte(x.id, 100) &&
+          verifierEcheance(x, comptes.get(x.compteId)?.type) === null &&
+          (x.categorieId === undefined || categories.has(x.categorieId)) &&
+          (x.sens === 'debit' || x.sens === 'credit') &&
+          (x.frequence === 'mensuelle' || x.frequence === '28j') &&
+          ['aucune', 'nombre', 'date'].includes(x.fin.type) &&
+          Number.isSafeInteger(x.prochaine) &&
+          x.prochaine >= 0 &&
+          typeof x.archive === 'boolean',
+      );
     if (ok) return d;
   } catch {
     // contenu de forme inattendue : traité comme invalide ci-dessous
