@@ -22,7 +22,7 @@ const FOND = '#1A1410';
 const TAILLES = [180, 192, 512] as const;
 
 export function pwa(demo: boolean, base: string): Plugin {
-  const nom = demo ? 'BUDGET DÉMO' : 'BUDGET';
+  const nom = demo ? 'BAARA DÉMO' : 'BAARA';
   const prefixe = demo ? 'budget-demo-' : 'budget-app-';
   return {
     name: 'budget-pwa',
@@ -34,7 +34,7 @@ export function pwa(demo: boolean, base: string): Plugin {
         // CSP juste après le charset, avant tout script.
         html: html
           .replace('<meta charset="utf-8" />', `$&\n    <meta http-equiv="Content-Security-Policy" content="${CSP}" />`)
-          .replace('<title>BUDGET</title>', `<title>${nom}</title>`),
+          .replace('<title>BAARA</title>', `<title>${nom}</title>`),
         tags: [
           { tag: 'meta', attrs: { name: 'theme-color', content: FOND }, injectTo: 'head' },
           { tag: 'meta', attrs: { name: 'apple-mobile-web-app-title', content: nom }, injectTo: 'head' },

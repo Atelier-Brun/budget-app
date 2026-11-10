@@ -37,7 +37,7 @@ test.describe.configure({ mode: 'serial' });
 test('CSP stricte présente, aucune violation ni erreur de console', async ({ page }) => {
   const erreurs = await surveiller(page);
   await page.goto(APP);
-  await expect(page.getByRole('heading', { name: 'BUDGET' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'BAARA' })).toBeVisible();
   const csp = await page.locator('meta[http-equiv="Content-Security-Policy"]').getAttribute('content');
   expect(csp).toContain("default-src 'self'");
   expect(csp).toContain("script-src 'self'");
@@ -53,14 +53,14 @@ test("l'app ne s'affiche pas dans un cadre (anti-iframe)", async ({ page, baseUR
   const cadre = page.frameLocator('iframe');
   await expect(cadre.locator('#app')).toBeAttached();
   await page.waitForTimeout(500);
-  await expect(cadre.getByRole('heading', { name: 'BUDGET' })).toHaveCount(0);
+  await expect(cadre.getByRole('heading', { name: 'BAARA' })).toHaveCount(0);
 });
 
 test('manifests distincts pour l’app et la démo', async ({ request }) => {
   const app = await (await request.get(`${APP}manifest.webmanifest`)).json();
   const demo = await (await request.get(`${DEMO}manifest.webmanifest`)).json();
-  expect(app).toMatchObject({ id: APP, scope: APP, start_url: APP, name: 'BUDGET', display: 'standalone' });
-  expect(demo).toMatchObject({ id: DEMO, scope: DEMO, start_url: DEMO, name: 'BUDGET DÉMO', display: 'standalone' });
+  expect(app).toMatchObject({ id: APP, scope: APP, start_url: APP, name: 'BAARA', display: 'standalone' });
+  expect(demo).toMatchObject({ id: DEMO, scope: DEMO, start_url: DEMO, name: 'BAARA DÉMO', display: 'standalone' });
 });
 
 test('fonctionne hors ligne après la première visite', async ({ page, context }) => {
@@ -69,7 +69,7 @@ test('fonctionne hors ligne après la première visite', async ({ page, context 
   expect(await swActif(page)).toMatch(/\/budget-app\/sw\.js$/);
   await context.setOffline(true);
   await page.reload();
-  await expect(page.getByRole('heading', { name: 'BUDGET' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'BAARA' })).toBeVisible();
   await context.setOffline(false);
   expect(erreurs).toEqual([]);
 });
@@ -99,7 +99,7 @@ test('démo isolée : bandeau, nom, service worker et caches séparés', async (
   await page.goto(APP);
   await swActif(page);
   await page.goto(DEMO);
-  await expect(page).toHaveTitle('BUDGET DÉMO');
+  await expect(page).toHaveTitle('BAARA DÉMO');
   await expect(page.getByText('DÉMO – données fictives')).toBeVisible();
   // La démo finit contrôlée par son propre service worker, jamais par celui de l'app.
   await expect

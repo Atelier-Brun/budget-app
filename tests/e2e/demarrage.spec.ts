@@ -3,8 +3,8 @@ import { demarrer } from './aides';
 
 test("l'app démarre : nom, barre de navigation, version dans Réglages", async ({ page }) => {
   await demarrer(page);
-  await expect(page).toHaveTitle('BUDGET');
-  await expect(page.getByRole('heading', { name: 'BUDGET' })).toBeVisible();
+  await expect(page).toHaveTitle('BAARA');
+  await expect(page.getByRole('heading', { name: 'BAARA' })).toBeVisible();
   const nav = page.getByRole('navigation', { name: 'Navigation principale' });
   await expect(nav.getByRole('button', { name: 'Accueil' })).toHaveAttribute('aria-current', 'page');
   await nav.getByRole('button', { name: 'Réglages' }).click();

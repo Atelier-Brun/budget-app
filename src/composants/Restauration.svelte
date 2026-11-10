@@ -65,7 +65,7 @@
     erreur = '';
     if (!f) return;
     try {
-      if (f.size > TAILLE_MAX) throw new ErreurSauvegarde('Fichier trop volumineux : ce n’est pas une sauvegarde BUDGET.');
+      if (f.size > TAILLE_MAX) throw new ErreurSauvegarde('Fichier trop volumineux : ce n’est pas une sauvegarde BAARA.');
       const lu = lireFichier(await f.text());
       if (lu.demo !== demo)
         throw new ErreurSauvegarde(

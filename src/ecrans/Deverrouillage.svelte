@@ -89,7 +89,7 @@
 </script>
 
 <div class="ecran acces">
-  <header class="marque"><Logo taille={56} /><h1>BUDGET</h1></header>
+  <header class="marque"><Logo taille={56} /><h1>BAARA</h1></header>
 
   {#if attente > 0}
     <p class="note" role="status">Trop d’erreurs. Nouvel essai possible dans {duree(attente)}.</p>

@@ -4,7 +4,7 @@
   import { untrack } from 'svelte';
   import type { Depart } from './Saisie.svelte';
   import { afficherSolde, LIBELLES, lireSoldeDepart, normaliserPrincipal, TYPES, trierComptes, verifierType, type Compte } from '../lib/comptes';
-  import { aujourdHui } from '../lib/dates';
+  import { aujourdHui, formaterDate } from '../lib/dates';
   import { normaliserNom, NOM_MAX, verifierNom } from '../lib/noms';
   import { calculerSolde, verifierDepart } from '../lib/soldes';
   import type { OperationComplete } from '../lib/operations';
@@ -37,6 +37,8 @@
 
   /** Type figé si le compte a déjà des virements (leurs deux écritures restent cohérentes). */
   const typeFige = untrack(() => verifierType(initial.id, initial.type, initial.type === 'tiers' ? 'courant' : 'tiers', operations));
+  /** Solde et date de départ figés dès qu'une opération existe : les écarts se corrigent par la catégorie CORRECTION. */
+  const departFige = untrack(() => operations.some((op) => op.compteId === initial.id));
   const solde = $derived(afficherSolde(initial.type, calculerSolde(initial, operations, aujourdHui())));
 
   let nom = $state(initial.nom);
@@ -59,17 +61,17 @@
 
   function enregistrer(e: SubmitEvent) {
     e.preventDefault();
-    const lecture = lireSoldeDepart(saisieSolde, negatif);
+    const lecture = departFige ? { ok: true as const, centimes: initial.soldeDepart } : lireSoldeDepart(saisieSolde, negatif);
     const message =
       verifierNom(nom, initial.id, comptes) ??
       verifierType(initial.id, initial.type, type, operations) ??
-      (lecture.ok ? verifierDepart(initial.id, lecture.centimes, dateDepart, operations) : lecture.erreur);
+      (departFige ? null : lecture.ok ? verifierDepart(initial.id, lecture.centimes, dateDepart, operations) : lecture.erreur);
     if (message || !lecture.ok) {
       erreur = message ?? '';
       return;
     }
     erreur = '';
-    const modifie: Compte = { ...initial, nom: normaliserNom(nom), type, soldeDepart: lecture.centimes, dateDepart };
+    const modifie: Compte = { ...initial, nom: normaliserNom(nom), type, soldeDepart: lecture.centimes, dateDepart: departFige ? initial.dateDepart : dateDepart };
     void sauver([...comptes.filter((c) => c.id !== initial.id), modifie], principal && type === 'courant' ? initial.id : undefined);
   }
 
@@ -116,25 +118,33 @@
       {#if typeFige}<p class="aide secondaire">{typeFige}</p>{/if}
     </fieldset>
 
-    <fieldset class="champ">
-      <legend>Solde de départ</legend>
-      <div class="solde">
-        <div class="segments signe">
-          <label class="segment"><input type="radio" name="signe" value={false} bind:group={negatif} aria-label="Positif" />+</label>
-          <label class="segment"><input type="radio" name="signe" value={true} bind:group={negatif} aria-label="Négatif" />−</label>
-        </div>
-        <input bind:value={saisieSolde} inputmode="decimal" placeholder="0,00" aria-label="Montant du solde de départ" autocomplete="off" />
-        <span class="secondaire">€</span>
+    {#if departFige}
+      <div class="champ">
+        <p class="depart">Solde de départ : <strong>{afficherSolde(initial.type, initial.soldeDepart).texte}</strong>, le {formaterDate(initial.dateDepart)}</p>
+        {#if initial.type === 'tiers'}<p class="aide secondaire">Solde positif : somme due au tiers · Solde négatif : somme due par le tiers</p>{/if}
+        <p class="aide secondaire">Non modifiable : ce compte a des opérations. Correction par une opération de catégorie CORRECTION.</p>
       </div>
-      {#if type === 'tiers'}
-        <p class="aide secondaire">Solde positif : somme due au tiers · Solde négatif : somme due par le tiers</p>
-      {/if}
-    </fieldset>
+    {:else}
+      <fieldset class="champ">
+        <legend>Solde de départ</legend>
+        <div class="solde">
+          <div class="segments signe">
+            <label class="segment"><input type="radio" name="signe" value={false} bind:group={negatif} aria-label="Positif" />+</label>
+            <label class="segment"><input type="radio" name="signe" value={true} bind:group={negatif} aria-label="Négatif" />−</label>
+          </div>
+          <input bind:value={saisieSolde} inputmode="decimal" placeholder="0,00" aria-label="Montant du solde de départ" autocomplete="off" />
+          <span class="secondaire">€</span>
+        </div>
+        {#if type === 'tiers'}
+          <p class="aide secondaire">Solde positif : somme due au tiers · Solde négatif : somme due par le tiers</p>
+        {/if}
+      </fieldset>
 
-    <label class="champ">
-      <span>Date de départ</span>
-      <input type="date" bind:value={dateDepart} required />
-    </label>
+      <label class="champ">
+        <span>Date de départ</span>
+        <input type="date" bind:value={dateDepart} required />
+      </label>
+    {/if}
 
     {#if type === 'courant' && !initial.archive}
       <label class="interrupteur">
@@ -178,6 +188,10 @@
 </div>
 
 <style>
+  .depart {
+    margin: 0;
+  }
+
   .resume {
     display: grid;
     gap: 12px;

@@ -30,16 +30,20 @@ async function utiliser(page: Page, nom: string) {
 test('création : majuscules, ordre alphabétique, sens par défaut affiché, conservé', async ({ page }) => {
   await demarrer(page);
   await ouvrirCategories(page);
-  await expect(page.getByText('Aucune catégorie.', { exact: false })).toBeVisible();
+  // CORRECTION présente dès le départ (0.4.1) : nom fixe, ni suppression ni archivage.
+  await page.getByRole('button', { name: /^CORRECTION/ }).click();
+  await expect(page.getByLabel('Nom')).toBeDisabled();
+  await expect(page.getByRole('button', { name: /Supprimer|Archiver/ })).toHaveCount(0);
+  await page.getByRole('button', { name: '‹ Catégories' }).click();
   await creer(page, 'zéro fictif');
   await creer(page, 'école fictive');
   await creer(page, 'abri fictif', 'Crédit');
 
   const lignes = page.getByRole('list').first().getByRole('button');
-  await expect(lignes).toHaveText(['ABRI FICTIF Crédit', 'ÉCOLE FICTIVE Débit', 'ZÉRO FICTIF Débit']);
+  await expect(lignes).toHaveText(['ABRI FICTIF Crédit', 'CORRECTION Débit', 'ÉCOLE FICTIVE Débit', 'ZÉRO FICTIF Débit']);
   await recharger(page);
   await ouvrirCategories(page);
-  await expect(lignes).toHaveCount(3);
+  await expect(lignes).toHaveCount(4);
 });
 
 test('refus clairs : vide et doublon (accents/casse) ; modification', async ({ page }) => {

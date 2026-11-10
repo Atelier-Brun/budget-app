@@ -24,9 +24,7 @@ test('sans compte puis sans catégorie : la saisie oriente vers leur création',
   await page.getByRole('button', { name: 'Enregistrer' }).click();
 
   await plus(page).click();
-  await expect(feuille(page)).toContainText('Aucune catégorie active.');
-  await feuille(page).getByRole('button', { name: 'Créer une catégorie' }).click();
-  await expect(page.getByRole('heading', { name: 'Nouvelle catégorie' })).toBeVisible();
+  await expect(feuille(page).getByText('CORRECTION', { exact: true })).toBeVisible(); // catégorie présente par défaut (0.4.1)
 });
 
 test('pavé numérique : rempli de droite à gauche en centimes, effacer, aucun clavier iOS', async ({ page }) => {

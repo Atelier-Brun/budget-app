@@ -66,7 +66,7 @@ test('les données sont conservées après rechargement', async ({ page }) => {
   await decrire(page, 'budget');
   await comptes(page, 'budget', FICTIF);
   await page.reload();
-  await expect(page.getByRole('heading', { name: 'BUDGET' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'BAARA' })).toBeVisible();
   expect(await comptes(page, 'budget')).toEqual([FICTIF]);
 });
 

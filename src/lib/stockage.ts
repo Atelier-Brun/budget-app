@@ -37,8 +37,8 @@ export class ErreurStockage extends Error {
 }
 
 const MESSAGES: Record<CodeErreur, string> = {
-  bloquee: 'BUDGET est ouvert dans une autre fenêtre avec une ancienne version : fermez-la puis rouvrez l’app.',
-  'trop-recente': 'Ces données viennent d’une version plus récente de BUDGET : mettez l’app à jour. Rien n’a été effacé.',
+  bloquee: 'BAARA est ouvert dans une autre fenêtre avec une ancienne version : fermez-la puis rouvrez l’app.',
+  'trop-recente': 'Ces données viennent d’une version plus récente de BAARA : mettez l’app à jour. Rien n’a été effacé.',
   migration: 'La mise à jour des données a échoué : rien n’a été modifié.',
   plein: 'Espace de stockage plein sur l’appareil : libérez de la place. Rien n’a été effacé.',
   doublon: 'Déjà enregistré : rien n’a été modifié.',

@@ -69,7 +69,7 @@
     <section class="carte bloc" aria-label={c.nom}>
       <div class="tete">
         <h2>{c.nom}</h2>
-        <span class="secondaire">BUDGET : {afficherSolde(c.type, app).texte}</span>
+        <span class="secondaire">BAARA : {afficherSolde(c.type, app).texte}</span>
       </div>
       <div class="solde">
         <div class="segments signe">

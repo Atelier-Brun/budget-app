@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Compte } from './comptes.ts';
 import { aValider, dateOccurrence, idOperation, occurrence, occurrencesJusqua, prochaine, rebaser, verifierEcheance, type Echeance } from './echeances.ts';
-import { pointageDu, vendrediCourant } from './pointage.ts';
+import { pointageDu } from './pointage.ts';
 import { finDeMois, prevoir } from './previsionnel.ts';
 import type { Operation } from './soldes.ts';
 
@@ -111,13 +111,17 @@ describe('prévisionnel', () => {
 });
 
 describe('pointage', () => {
-  it('vendredi le plus récent ; rappel jusqu’au pointage de la semaine', () => {
-    expect(vendrediCourant('2026-11-13')).toBe('2026-11-13'); // vendredi
-    expect(vendrediCourant('2026-11-12')).toBe('2026-11-06'); // jeudi
-    expect(vendrediCourant('2026-11-16')).toBe('2026-11-13'); // lundi
-    expect(pointageDu(null, '2026-11-10')).toBe(true);
-    expect(pointageDu('2026-11-06', '2026-11-12')).toBe(false);
-    expect(pointageDu('2026-11-06', '2026-11-13')).toBe(true);
-    expect(pointageDu('2026-11-13', '2026-11-15')).toBe(false);
+  it('rappel du vendredi au dimanche, masqué si pointage fait depuis le lundi', () => {
+    expect(pointageDu(null, '2026-11-12')).toBe(false); // jeudi : jamais
+    expect(pointageDu('2026-11-06', '2026-11-16')).toBe(false); // lundi : jamais, même en retard
+    expect(pointageDu(null, '2026-11-13')).toBe(true); // vendredi
+    expect(pointageDu('2026-11-06', '2026-11-14')).toBe(true); // samedi, dernier pointage la semaine d'avant
+    expect(pointageDu('2026-11-08', '2026-11-15')).toBe(true); // dimanche ; le 08 était le dimanche précédent
+    expect(pointageDu('2026-11-09', '2026-11-15')).toBe(false); // fait le lundi de la semaine
+    expect(pointageDu('2026-11-11', '2026-11-13')).toBe(false); // fait le mercredi
+    expect(pointageDu('2026-11-13', '2026-11-13')).toBe(false); // fait le jour même
+    expect(pointageDu(null, '2026-12-31')).toBe(false); // jeudi, changement de mois
+    expect(pointageDu('2026-12-27', '2027-01-01')).toBe(true); // vendredi, changement d'année
+    expect(pointageDu('2026-12-28', '2027-01-01')).toBe(false);
   });
 });

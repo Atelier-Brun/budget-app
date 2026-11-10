@@ -3,6 +3,7 @@
   import { untrack } from 'svelte';
   import { estInutilisee, type Categorie } from '../lib/categories';
   import { normaliserNom, NOM_MAX, verifierNom } from '../lib/noms';
+  import { CORRECTION } from '../lib/pointage';
 
   let {
     categorie,
@@ -26,6 +27,8 @@
     nouvelle: !categories.some((c) => c.id === categorie.id),
     inutilisee: estInutilisee(categorie.id, operations),
   }));
+  /** CORRECTION (pointage, écarts) : toujours présente, nom fixe, ni suppression ni archivage. */
+  const protegee = initial.nom === CORRECTION;
 
   let nom = $state(initial.nom);
   let sens = $state(initial.sens);
@@ -57,7 +60,8 @@
   <form class="carte formulaire" onsubmit={enregistrer} novalidate>
     <label class="champ">
       <span>Nom</span>
-      <input bind:value={nom} maxlength={NOM_MAX + 10} autocapitalize="characters" autocomplete="off" spellcheck="false" />
+      <input bind:value={nom} disabled={protegee} maxlength={NOM_MAX + 10} autocapitalize="characters" autocomplete="off" spellcheck="false" />
+      {#if protegee}<small class="aide secondaire">Catégorie utilisée par le pointage : nom fixe, non supprimable.</small>{/if}
     </label>
 
     <fieldset class="champ">
@@ -73,7 +77,7 @@
     <button type="submit" class="bouton" disabled={occupe}>Enregistrer</button>
   </form>
 
-  {#if !nouvelle}
+  {#if !nouvelle && !protegee}
     {#if initial.archive}
       <button type="button" class="bouton-discret action" disabled={occupe} onclick={() => terminer(onenregistrer({ ...initial, archive: false }))}>
         Réactiver cette catégorie

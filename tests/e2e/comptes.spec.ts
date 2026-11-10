@@ -1,7 +1,7 @@
 // Morceau 1 de 1e : comptes, Réglages, bandeaux. Données FICTIVES uniquement.
 import { expect, test, type Page } from '@playwright/test';
 
-import { demarrer, recharger } from './aides';
+import { capture, demarrer, feuille, plus, recharger, taper } from './aides';
 import { DEMO } from './aides';
 
 const nav = (page: Page) => page.getByRole('navigation', { name: 'Navigation principale' });
@@ -35,6 +35,34 @@ test('premier compte depuis l’accueil : majuscules, principal, solde affiché'
 
   await recharger(page); // conservé dans la base
   await expect(page.getByRole('button', { name: /COMPTE FICTIF/ })).toBeVisible();
+});
+
+test('solde de départ : modifiable sans opération, puis en lecture seule (correction par CORRECTION)', async ({ page }) => {
+  await demarrer(page);
+  await page.getByRole('button', { name: 'Créer un compte' }).click();
+  await remplir(page, 'Compte fictif', { solde: '100' });
+  const fiche = () => page.getByRole('button', { name: /^COMPTE FICTIF/ }).click();
+  await fiche();
+  await page.getByLabel('Montant du solde de départ').fill('150'); // aucune opération : encore corrigeable
+  await page.getByRole('button', { name: 'Enregistrer' }).click();
+  await expect(page.getByRole('button', { name: /^COMPTE FICTIF/ })).toContainText('150,00 €');
+
+  await plus(page).click();
+  await taper(page, '1000');
+  await feuille(page).getByText('CORRECTION', { exact: true }).click();
+  await feuille(page).getByRole('button', { name: 'Valider' }).click();
+  await expect(page.getByRole('button', { name: /^COMPTE FICTIF/ })).toContainText('140,00 €');
+
+  await fiche();
+  await expect(page.getByLabel('Montant du solde de départ')).toHaveCount(0);
+  await expect(page.getByLabel('Date de départ')).toHaveCount(0);
+  await expect(page.getByText(/^Solde de départ :/)).toHaveText(/^Solde de départ : 150,00\s€, le \d{2}\/\d{2}\/\d{4}$/);
+  await page.waitForTimeout(1500); // capture : laisser la feuille de saisie finir de se fermer
+  await capture(page, '041-1-solde-depart-fige');
+  await page.getByLabel('Nom').fill('Compte renommé fictif'); // le reste de la fiche reste modifiable
+  await page.getByRole('button', { name: 'Enregistrer' }).click();
+  await recharger(page);
+  await expect(page.getByRole('button', { name: /^COMPTE RENOMMÉ FICTIF/ })).toContainText('140,00 €');
 });
 
 test('refus clairs : nom vide, doublon (accents/casse), montant invalide', async ({ page }) => {

@@ -105,11 +105,13 @@ test('prévisionnel : alerte si un compte courant passe sous zéro dans le mois 
 });
 
 test('pointage : rappel, écart corrigé en une touche (CORRECTION), tiers exclus, date affichée', async ({ page }) => {
+  await page.clock.setSystemTime(new Date('2026-11-13T10:00:00+01:00')); // vendredi : rappel affiché
   await demarrer(page);
   await compte(page, 'Compte fictif', { solde: '100' });
   await compte(page, 'Livret fictif', { type: 'Épargne', solde: '500' });
   await compte(page, 'Ami fictif', { type: 'Tiers' });
   await accueil(page);
+  await capture(page, '041-2-accueil-vendredi-pointage');
   await page.getByRole('button', { name: 'Pointage de la semaine à faire' }).click();
   await expect(page.getByRole('region', { name: 'AMI FICTIF' })).toHaveCount(0);
   await page.getByLabel('Solde bancaire COMPTE FICTIF').fill('87,66');
@@ -124,7 +126,7 @@ test('pointage : rappel, écart corrigé en une touche (CORRECTION), tiers exclu
   await recharger(page);
   await expect(solde(page, 'COMPTE FICTIF')).toContainText('87,66 €');
   await nav(page).getByRole('button', { name: 'Réglages' }).click();
-  await expect(page.getByRole('button', { name: /^Pointage/ })).toContainText('10/11/2026');
+  await expect(page.getByRole('button', { name: /^Pointage/ })).toContainText('13/11/2026');
   await page.getByRole('button', { name: 'Catégories' }).click();
   await expect(page.getByRole('button', { name: /^CORRECTION/ })).toBeVisible();
 });

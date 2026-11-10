@@ -51,7 +51,7 @@
 <div class="ecran">
   <header class="entete">
     <Logo taille={32} />
-    <h1 class="marque">BUDGET</h1>
+    <h1 class="marque">BAARA</h1>
   </header>
 
   {#if nbAValider > 0}

@@ -36,7 +36,8 @@ test('écrans longs : dernier bouton visible et touchable au-dessus de la barre'
   await nav(page).getByRole('button', { name: 'Accueil' }).click();
   await dernierBoutonAccessible(page, page.getByRole('button', { name: /^LIVRET TROIS FICTIF/ }));
   await page.evaluate(() => window.scrollTo(0, 0));
-  await page.getByRole('button', { name: 'Pointage de la semaine à faire' }).click();
+  await reglages();
+  await page.getByRole('button', { name: /^Pointage/ }).click();
   await dernierBoutonAccessible(page, page.getByRole('button', { name: 'Valider le pointage' }));
   await capture(page, '040-4-pointage');
 

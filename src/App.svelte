@@ -140,6 +140,12 @@
     try {
       await charger(db, k);
       if (demo && comptes.length + categories.length + operations.length === 0) await remplirDemo();
+      // CORRECTION toujours présente et active (ajout seul, aucune donnée existante modifiée hormis la réactivation).
+      const correction = categories.find((x) => x.nom === CORRECTION);
+      if (!correction || correction.archive) {
+        const cat: Categorie = { ...(correction ?? { id: crypto.randomUUID(), sens: 'debit' as const }), nom: CORRECTION, archive: false };
+        await modifier(['categories'], (tx) => void tx.objectStore('categories').put(cat)); // échec : alerte affichée, l'app reste utilisable
+      }
       etat = 'ouvert';
     } catch (e) {
       cle = null;
@@ -390,7 +396,7 @@
     copierAvantMigration(nomBase).then(() =>
     ouvrirBase(nomBase, () => {
       db = null;
-      alerte = 'BUDGET a été mis à jour dans une autre fenêtre : rechargez l’app.';
+      alerte = 'BAARA a été mis à jour dans une autre fenêtre : rechargez l’app.';
     })
       .then(async (base) => {
         db = base;

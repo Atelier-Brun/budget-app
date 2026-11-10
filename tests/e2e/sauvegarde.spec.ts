@@ -85,7 +85,7 @@ test('sauvegarder → effacer → restaurer → données identiques (test obliga
   await expect(page.getByText('Code incorrect.')).toBeVisible();
   await saisirCode(page, CODE);
   const apercu = page.getByRole('group', { name: 'Aperçu de la sauvegarde' });
-  await expect(apercu).toContainText('5 opérations · 3 comptes · 1 catégorie');
+  await expect(apercu).toContainText('5 opérations · 3 comptes · 2 catégories');
   await expect(apercu).toContainText('Ces données seront installées sur cet appareil.');
   await capture(page, '030-7-restauration-apercu');
   await apercu.getByRole('button', { name: 'Restaurer' }).click();
@@ -110,7 +110,7 @@ test('Réglages : fichier étranger ou démo refusé ; restauration avec copie d
   await page.getByRole('button', { name: 'Restaurer une sauvegarde…' }).click();
   const champ = page.locator('input[type=file]');
   await champ.setInputFiles({ name: 'x.json', mimeType: 'application/json', buffer: Buffer.from('{"a":1}') });
-  await expect(page.getByText('Fichier non reconnu : ce n’est pas une sauvegarde BUDGET valide.')).toBeVisible();
+  await expect(page.getByText('Fichier non reconnu : ce n’est pas une sauvegarde BAARA valide.')).toBeVisible();
   const demo = `${dossier}/sauvegarde-demo.json`;
   writeFileSync(demo, readFileSync(chemin, 'utf8').replace('"demo":false', '"demo":true'));
   await champ.setInputFiles(demo);

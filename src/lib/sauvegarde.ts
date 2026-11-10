@@ -34,7 +34,7 @@ type Resume = { date: string; nb: Record<Magasin, number> };
 
 /** Erreur au message fixe, montrable tel quel (jamais de donnée ni de détail technique). */
 export class ErreurSauvegarde extends Error {}
-const NON_RECONNU = 'Fichier non reconnu : ce n’est pas une sauvegarde BUDGET valide.';
+const NON_RECONNU = 'Fichier non reconnu : ce n’est pas une sauvegarde BAARA valide.';
 const INVALIDE = 'Contenu de la sauvegarde invalide : rien n’a été modifié.';
 
 export const nomFichier = (date: string, demo: boolean) => `budget-${demo ? 'demo-' : ''}sauvegarde-${date}.json`;
@@ -85,7 +85,7 @@ export function lireFichier(contenu: string): Fichier {
     const f: unknown = JSON.parse(contenu);
     if (!estObjet(f) || f['format'] !== FORMAT) throw new ErreurSauvegarde(NON_RECONNU);
     if (typeof f['version'] === 'number' && f['version'] > VERSION_FORMAT)
-      throw new ErreurSauvegarde('Sauvegarde créée par une version plus récente de BUDGET : mettez l’app à jour. Rien n’a été modifié.');
+      throw new ErreurSauvegarde('Sauvegarde créée par une version plus récente de BAARA : mettez l’app à jour. Rien n’a été modifié.');
     const { version, demo, date, coffre, resume, donnees } = f;
     if (version !== VERSION_FORMAT || typeof demo !== 'boolean' || typeof date !== 'string' || !estDateValide(date))
       throw new ErreurSauvegarde(NON_RECONNU);
