@@ -4,12 +4,14 @@
   import { onMount } from 'svelte';
   import Barre from './composants/Barre.svelte';
   import Accueil from './ecrans/Accueil.svelte';
+  import Carnet from './ecrans/Carnet.svelte';
   import Categories from './ecrans/Categories.svelte';
   import Comptes from './ecrans/Comptes.svelte';
   import FicheCategorie from './ecrans/FicheCategorie.svelte';
   import FicheCompte from './ecrans/FicheCompte.svelte';
   import Reglages from './ecrans/Reglages.svelte';
-  import Saisie from './ecrans/Saisie.svelte';
+  import Saisie, { type Depart } from './ecrans/Saisie.svelte';
+  import { ecrituresLiees } from './lib/carnet';
   import { nouvelleCategorie, type Categorie } from './lib/categories';
   import { nouveauCompte, type Compte } from './lib/comptes';
   import { aujourdHui } from './lib/dates';
@@ -20,6 +22,7 @@
 
   type Ecran =
     | { nom: 'accueil' }
+    | { nom: 'carnet' }
     | { nom: 'reglages' }
     | { nom: 'comptes' }
     | { nom: 'compte'; compte: Compte; depuis: 'accueil' | 'comptes' }
@@ -36,15 +39,25 @@
   let operations = $state<OperationComplete[]>([]);
   let ecran = $state<Ecran>({ nom: 'accueil' });
   let saisie = $state(false);
+  /** Modification depuis le carnet : l'opération, ou les deux écritures du virement. */
+  let edition = $state<OperationComplete[] | null>(null);
+  /** Saisie ouverte depuis une fiche compte (compte, type, sens déjà choisis). */
+  let depart = $state<Depart>({});
+  /** Derniers comptes utilisés, proposés par défaut (magasin « meta », écrit avec l'opération). */
+  let dernier = $state<{ compteId?: string; versId?: string }>({});
   let message = $state('');
   let minuterie: ReturnType<typeof setTimeout> | undefined;
 
   async function charger(base: IDBDatabase) {
-    [comptes, categories, operations] = await Promise.all([
+    let meta: { cle: string; compteId?: string; versId?: string }[];
+    [comptes, categories, operations, meta] = await Promise.all([
       lireTout<Compte>(base, 'comptes'),
       lireTout<Categorie>(base, 'categories'),
       lireTout<OperationComplete>(base, 'operations'),
+      lireTout<{ cle: string; compteId?: string; versId?: string }>(base, 'meta'),
     ]);
+    const d = meta.find((m) => m.cle === 'derniere-saisie');
+    dernier = { ...(d?.compteId ? { compteId: d.compteId } : {}), ...(d?.versId ? { versId: d.versId } : {}) };
   }
 
   /** Une écriture « tout ou rien » dans la base, puis relecture : l'écran montre toujours ce qui est enregistré. */
@@ -85,14 +98,57 @@
     minuterie = setTimeout(() => (message = ''), 2500);
   }
 
-  async function validerOperation(op: OperationComplete): Promise<boolean> {
-    const ok = await modifier(['operations'], (tx) => void tx.objectStore('operations').add(op));
+  /**
+   * Une opération ou les deux écritures d'un virement : une seule transaction, tout ou rien.
+   * En modification, les anciennes écritures sont retirées dans la même transaction.
+   */
+  async function validerOperation(ops: OperationComplete[]): Promise<boolean> {
+    const anciennes = edition ?? [];
+    const ok = await modifier(['operations', 'meta'], (tx) => {
+      const magasin = tx.objectStore('operations');
+      for (const op of anciennes) magasin.delete(op.id);
+      for (const op of ops) magasin.add(op);
+      // Nouvelle saisie : retenir les comptes utilisés (virement : départ = Débit, arrivée = Crédit).
+      if (!anciennes.length && ops[0]) {
+        const versId = ops[1]?.compteId ?? dernier.versId;
+        tx.objectStore('meta').put({ cle: 'derniere-saisie', compteId: ops[0].compteId, ...(versId ? { versId } : {}) });
+      }
+    });
     if (ok) {
-      saisie = false;
-      aller({ nom: 'accueil' });
-      annoncer('Opération enregistrée');
+      fermerSaisie();
+      if (anciennes.length) annoncer('Modification enregistrée');
+      else {
+        aller({ nom: 'accueil' });
+        annoncer(ops.length > 1 ? 'Virement enregistré' : 'Opération enregistrée');
+      }
     }
     return ok;
+  }
+
+  /** Suppression confirmée : l'opération, ou les deux écritures du virement, ensemble. */
+  async function supprimerOperation(): Promise<boolean> {
+    const anciennes = edition ?? [];
+    const ok = await modifier(['operations'], (tx) => {
+      for (const op of anciennes) tx.objectStore('operations').delete(op.id);
+    });
+    if (ok) {
+      fermerSaisie();
+      annoncer(anciennes.length > 1 ? 'Virement supprimé' : 'Opération supprimée');
+    }
+    return ok;
+  }
+
+  function fermerSaisie() {
+    saisie = false;
+    edition = null;
+    depart = {};
+  }
+
+  function ouvrirSaisie(d: Depart = {}) {
+    message = '';
+    edition = null;
+    depart = d;
+    saisie = true;
   }
 
   function aller(e: Ecran) {
@@ -142,6 +198,17 @@
 <main>
   {#if ecran.nom === 'accueil'}
     <Accueil {comptes} {operations} onouvrir={ouvrir('accueil')} oncreer={creer('accueil')} />
+  {:else if ecran.nom === 'carnet'}
+    <Carnet
+      {comptes}
+      {categories}
+      {operations}
+      onouvrir={(op) => {
+        message = '';
+        edition = ecrituresLiees(op, operations);
+        saisie = true;
+      }}
+    />
   {:else if ecran.nom === 'reglages'}
     <Reglages
       {persistant}
@@ -178,6 +245,7 @@
         {operations}
         retour={depuis === 'accueil' ? 'Accueil' : 'Comptes'}
         onenregistrer={enregistrerComptes}
+        onsaisir={ouvrirSaisie}
         onretour={() => aller({ nom: depuis })}
       />
     {/key}
@@ -185,26 +253,28 @@
 </main>
 
 <Barre
-  actif={ecran.nom === 'accueil' || (ecran.nom === 'compte' && ecran.depuis === 'accueil') ? 'accueil' : 'reglages'}
+  actif={ecran.nom === 'accueil' || ecran.nom === 'carnet' ? ecran.nom : ecran.nom === 'compte' && ecran.depuis === 'accueil' ? 'accueil' : 'reglages'}
   onaller={(o) => aller({ nom: o })}
-  onplus={() => {
-    message = '';
-    saisie = true;
-  }}
+  onplus={() => ouvrirSaisie()}
 />
 
 {#if saisie}
   <Saisie
     {comptes}
     {categories}
+    {operations}
+    {depart}
+    {dernier}
+    existant={edition}
     onvalider={validerOperation}
-    onfermer={() => (saisie = false)}
+    onsupprimer={edition ? supprimerOperation : null}
+    onfermer={fermerSaisie}
     oncreercompte={() => {
-      saisie = false;
+      fermerSaisie();
       creer('accueil')();
     }}
     oncreercategorie={() => {
-      saisie = false;
+      fermerSaisie();
       aller({ nom: 'categorie', categorie: nouvelleCategorie() });
     }}
   />

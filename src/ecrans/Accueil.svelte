@@ -1,9 +1,8 @@
 <script lang="ts">
   // Accueil : soldes du jour par type, sous-total par type, pas de total général.
   import Logo from '../composants/Logo.svelte';
-  import { LIBELLES, TYPES, trierComptes, type Compte } from '../lib/comptes';
+  import { afficherSolde, LIBELLES, TYPES, trierComptes, type Compte } from '../lib/comptes';
   import { aujourdHui } from '../lib/dates';
-  import { formaterMontant } from '../lib/montants';
   import { calculerSolde, type Operation } from '../lib/soldes';
 
   let {
@@ -23,8 +22,8 @@
   });
 
   // Tiers : le signe porte le sens (+ je lui dois, − il me doit), pas de couleur « bonne » ou « mauvaise ».
-  const montant = (type: Compte['type'], solde: number) => formaterMontant(solde, type === 'tiers');
-  const negatif = (type: Compte['type'], solde: number) => type !== 'tiers' && solde < 0;
+  const montant = (type: Compte['type'], solde: number) => afficherSolde(type, solde).texte;
+  const negatif = (type: Compte['type'], solde: number) => afficherSolde(type, solde).negatif;
 </script>
 
 <div class="ecran">

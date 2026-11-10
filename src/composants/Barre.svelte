@@ -1,6 +1,6 @@
 <script lang="ts">
-  // Barre de navigation du bas : Accueil, « + » (saisie rapide, morceau 3 de 1e), Réglages. Icônes en SVG.
-  type Onglet = 'accueil' | 'reglages';
+  // Barre de navigation du bas : Accueil, Carnet, « + » (saisie rapide, toujours au centre), Réglages. Icônes en SVG.
+  type Onglet = 'accueil' | 'carnet' | 'reglages';
   let { actif, onaller, onplus }: { actif: Onglet; onaller: (o: Onglet) => void; onplus: (() => void) | null } = $props();
 </script>
 
@@ -8,6 +8,10 @@
   <button type="button" class="onglet" aria-current={actif === 'accueil' ? 'page' : undefined} onclick={() => onaller('accueil')}>
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11 12 4l8 7v9h-5.5v-6h-5v6H4z" /></svg>
     <span>Accueil</span>
+  </button>
+  <button type="button" class="onglet" aria-current={actif === 'carnet' ? 'page' : undefined} onclick={() => onaller('carnet')}>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v16H6zM9 9h6M9 13h6M9 17h3" /></svg>
+    <span>Carnet</span>
   </button>
   <button type="button" class="plus" aria-label="Saisir une opération" disabled={!onplus} onclick={() => onplus?.()}>
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
@@ -24,7 +28,8 @@
     inset: auto 0 0;
     z-index: 2;
     display: grid;
-    grid-template-columns: 1fr auto 1fr;
+    /* 2 onglets à gauche, 1 à droite : 2fr de chaque côté, le « + » reste au centre. */
+    grid-template-columns: 1fr 1fr auto 2fr;
     align-items: center;
     height: var(--barre);
     padding: 0 24px env(safe-area-inset-bottom);

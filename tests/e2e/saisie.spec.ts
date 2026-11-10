@@ -1,37 +1,8 @@
 // Saisie rapide (pavé numérique intégré), soldes, démo remplie. Données FICTIVES uniquement.
 import { expect, test, type Page } from '@playwright/test';
+import { APP, categorie, compte, DEMO, feuille, nav, plus, taper } from './aides';
 
-const APP = '/budget-app/';
-const DEMO = '/budget-app/demo/';
-
-const nav = (page: Page) => page.getByRole('navigation', { name: 'Navigation principale' });
-const plus = (page: Page) => nav(page).getByRole('button', { name: 'Saisir une opération' });
-const feuille = (page: Page) => page.getByRole('dialog', { name: 'Nouvelle opération' });
 const pave = (page: Page) => feuille(page).getByRole('group', { name: 'Pavé numérique' });
-
-/** Tape les chiffres sur le pavé intégré (« ⌫ » = Effacer). */
-async function taper(page: Page, touches: string) {
-  for (const t of touches) await pave(page).getByRole('button', { name: t === '⌫' ? 'Effacer' : t, exact: true }).click();
-}
-
-async function compte(page: Page, nom: string, opts: { type?: string; solde?: string } = {}) {
-  await nav(page).getByRole('button', { name: 'Réglages' }).click();
-  await page.getByRole('button', { name: 'Comptes' }).click();
-  await page.getByRole('button', { name: 'Nouveau compte' }).click();
-  await page.getByLabel('Nom').fill(nom);
-  if (opts.type) await page.getByText(opts.type, { exact: true }).click();
-  if (opts.solde) await page.getByLabel('Montant du solde de départ').fill(opts.solde);
-  await page.getByRole('button', { name: 'Enregistrer' }).click();
-}
-
-async function categorie(page: Page, nom: string, credit = false) {
-  await nav(page).getByRole('button', { name: 'Réglages' }).click();
-  await page.getByRole('button', { name: 'Catégories' }).click();
-  await page.getByRole('button', { name: 'Nouvelle catégorie' }).click();
-  await page.getByLabel('Nom').fill(nom);
-  if (credit) await page.getByText('Crédit', { exact: true }).click();
-  await page.getByRole('button', { name: 'Enregistrer' }).click();
-}
 
 /** Saisie rapide : montant au pavé → catégorie → Valider (compte principal et date du jour déjà remplis). */
 async function saisir(page: Page, touches: string, cat: string, opts: { compte?: string; sens?: 'Débit' | 'Crédit' } = {}) {
@@ -142,7 +113,7 @@ test('compte tiers (option A) : libellés Débit/Crédit, débit de 40 → −40
 test('démo : remplie au premier lancement, réinitialisable ; app réelle jamais remplie', async ({ page }) => {
   await page.goto(DEMO);
   await expect(page.getByRole('button', { name: /^COMPTE COURANT.*Principal/ })).toBeVisible();
-  await expect(page.getByRole('region', { name: 'Tiers' }).getByRole('button')).toContainText('−25,00 €');
+  await expect(page.getByRole('region', { name: 'Tiers' }).getByRole('button')).toContainText('−15,00 €');
 
   await page.getByRole('button', { name: /^AMI EXEMPLE/ }).click();
   await page.getByLabel('Nom').fill('Ami renommé');

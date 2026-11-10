@@ -1,6 +1,6 @@
 // Données FICTIVES uniquement.
 import { describe, expect, it } from 'vitest';
-import { lireSoldeDepart, normaliserPrincipal, nouveauCompte, trierComptes, type Compte } from './comptes.ts';
+import { lireSoldeDepart, normaliserPrincipal, nouveauCompte, afficherSolde, trierComptes, verifierType, type Compte } from './comptes.ts';
 import { estDateValide } from './dates.ts';
 
 const c = (id: string, nom: string, type: Compte['type'], autres: Partial<Compte> = {}): Compte => ({
@@ -74,5 +74,25 @@ describe('lireSoldeDepart', () => {
   it('saisie invalide : message de lireMontant', () => {
     expect(lireSoldeDepart('12,345', false)).toMatchObject({ ok: false });
     expect(lireSoldeDepart('abc', true)).toMatchObject({ ok: false });
+  });
+});
+
+describe('verifierType', () => {
+  const ops = [{ compteId: 'c1', virementId: 'v' }, { compteId: 'c2' }];
+  it('type inchangé, ou compte sans virement : accepté', () => {
+    expect(verifierType('c1', 'courant', 'courant', ops)).toBeNull();
+    expect(verifierType('c2', 'courant', 'tiers', ops)).toBeNull();
+  });
+  it('compte avec virements : changement refusé avec un message clair', () => {
+    expect(verifierType('c1', 'courant', 'tiers', ops)).toBe('Type non modifiable : ce compte a des virements.');
+  });
+});
+
+describe('afficherSolde', () => {
+  it('tiers : signe + et jamais rouge ; autres : rouge si négatif', () => {
+    expect(afficherSolde('tiers', 1_000)).toEqual({ texte: '+10,00 €', negatif: false });
+    expect(afficherSolde('tiers', -1_000)).toEqual({ texte: '−10,00 €', negatif: false });
+    expect(afficherSolde('courant', -1_000)).toEqual({ texte: '−10,00 €', negatif: true });
+    expect(afficherSolde('epargne', 1_000)).toEqual({ texte: '10,00 €', negatif: false });
   });
 });

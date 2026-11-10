@@ -1,6 +1,6 @@
 // Comptes : types, tri, compte principal, solde de départ. Fonctions pures.
 import { aujourdHui } from './dates.ts';
-import { lireMontant, type Lecture } from './montants.ts';
+import { formaterMontant, lireMontant, type Lecture } from './montants.ts';
 import type { Compte as CompteSolde } from './soldes.ts';
 
 export type TypeCompte = 'courant' | 'epargne' | 'tiers';
@@ -53,4 +53,15 @@ export function lireSoldeDepart(saisie: string, negatif: boolean): Lecture {
   if (/^0*(?:[.,]0{1,2})?$/.test(saisie.trim())) return { ok: true, centimes: 0 };
   const lecture = lireMontant(saisie);
   return lecture.ok && negatif ? { ok: true, centimes: -lecture.centimes } : lecture;
+}
+
+/** Le type d'un compte qui a déjà des virements ne change plus (ses virements resteraient à l'ancien type). */
+export function verifierType(id: string, ancien: TypeCompte, nouveau: TypeCompte, operations: readonly { compteId: string; virementId?: string }[]): string | null {
+  if (nouveau === ancien || !operations.some((o) => o.compteId === id && o.virementId)) return null;
+  return 'Type non modifiable : ce compte a des virements.';
+}
+
+/** Solde affiché pareil partout (accueil, fiche, saisie) : tiers avec signe +, rouge si négatif (sauf tiers). */
+export function afficherSolde(type: TypeCompte, centimes: number): { texte: string; negatif: boolean } {
+  return { texte: formaterMontant(centimes, type === 'tiers'), negatif: type !== 'tiers' && centimes < 0 };
 }

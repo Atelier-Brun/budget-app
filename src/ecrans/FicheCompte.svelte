@@ -1,9 +1,13 @@
 <script lang="ts">
-  // Fiche compte : création et modification (nom, type, solde et date de départ, principal), archivage.
+  // Fiche compte : solde et raccourcis de saisie (Débit, Crédit, Virement), création et modification
+  // (nom, type, solde et date de départ, principal), archivage.
   import { untrack } from 'svelte';
-  import { LIBELLES, lireSoldeDepart, normaliserPrincipal, TYPES, trierComptes, type Compte } from '../lib/comptes';
+  import type { Depart } from './Saisie.svelte';
+  import { afficherSolde, LIBELLES, lireSoldeDepart, normaliserPrincipal, TYPES, trierComptes, verifierType, type Compte } from '../lib/comptes';
+  import { aujourdHui } from '../lib/dates';
   import { normaliserNom, NOM_MAX, verifierNom } from '../lib/noms';
-  import { verifierDepart, type Operation } from '../lib/soldes';
+  import { calculerSolde, verifierDepart } from '../lib/soldes';
+  import type { OperationComplete } from '../lib/operations';
 
   let {
     compte,
@@ -11,13 +15,16 @@
     operations,
     retour,
     onenregistrer,
+    onsaisir,
     onretour,
   }: {
     compte: Compte;
     comptes: Compte[];
-    operations: Operation[];
+    operations: OperationComplete[];
     retour: string;
     onenregistrer: (liste: Compte[]) => Promise<boolean>;
+    /** Raccourci : ouvre la saisie avec ce compte déjà choisi. */
+    onsaisir: (d: Depart) => void;
     onretour: () => void;
   } = $props();
 
@@ -27,6 +34,10 @@
     nouveau: !comptes.some((c) => c.id === compte.id),
     autresCourants: trierComptes(comptes.filter((c) => c.id !== compte.id && c.type === 'courant' && !c.archive)),
   }));
+
+  /** Type figé si le compte a déjà des virements (leurs deux écritures restent cohérentes). */
+  const typeFige = untrack(() => verifierType(initial.id, initial.type, initial.type === 'tiers' ? 'courant' : 'tiers', operations));
+  const solde = $derived(afficherSolde(initial.type, calculerSolde(initial, operations, aujourdHui())));
 
   let nom = $state(initial.nom);
   let type = $state(initial.type);
@@ -51,6 +62,7 @@
     const lecture = lireSoldeDepart(saisieSolde, negatif);
     const message =
       verifierNom(nom, initial.id, comptes) ??
+      verifierType(initial.id, initial.type, type, operations) ??
       (lecture.ok ? verifierDepart(initial.id, lecture.centimes, dateDepart, operations) : lecture.erreur);
     if (message || !lecture.ok) {
       erreur = message ?? '';
@@ -74,6 +86,20 @@
   <h1 class="titre-fiche">{nouveau ? 'Nouveau compte' : initial.nom}</h1>
   {#if initial.archive}<p class="secondaire">Compte archivé : masqué partout, historique conservé.</p>{/if}
 
+  {#if !nouveau && !initial.archive}
+    <div class="resume carte">
+      <p class="solde-actuel">
+        <span class="secondaire">Solde</span>
+        <strong class:negatif={solde.negatif}>{solde.texte}</strong>
+      </p>
+      <div class="raccourcis">
+        <button type="button" class="bouton-discret debit" onclick={() => onsaisir({ compteId: initial.id, sens: 'debit' })}>Débit</button>
+        <button type="button" class="bouton-discret credit" onclick={() => onsaisir({ compteId: initial.id, sens: 'credit' })}>Crédit</button>
+        <button type="button" class="bouton-discret" onclick={() => onsaisir({ compteId: initial.id, mode: 'virement' })}>Virement</button>
+      </div>
+    </div>
+  {/if}
+
   <form class="carte formulaire" onsubmit={enregistrer} novalidate>
     <label class="champ">
       <span>Nom</span>
@@ -84,9 +110,10 @@
       <legend>Type</legend>
       <div class="segments">
         {#each TYPES as t (t)}
-          <label class="segment"><input type="radio" name="type" value={t} bind:group={type} />{LIBELLES[t].un}</label>
+          <label class="segment"><input type="radio" name="type" value={t} bind:group={type} disabled={!!typeFige && t !== initial.type} />{LIBELLES[t].un}</label>
         {/each}
       </div>
+      {#if typeFige}<p class="aide secondaire">{typeFige}</p>{/if}
     </fieldset>
 
     <fieldset class="champ">
@@ -151,6 +178,42 @@
 </div>
 
 <style>
+  .resume {
+    display: grid;
+    gap: 12px;
+    margin-bottom: 16px;
+    padding: 14px 16px;
+  }
+
+  .solde-actuel {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin: 0;
+  }
+
+  .solde-actuel strong {
+    font-size: 1.375rem;
+  }
+
+  .raccourcis {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+
+  .raccourcis .debit {
+    color: var(--debit);
+  }
+
+  .raccourcis .credit {
+    color: var(--credit);
+  }
+
+  .negatif {
+    color: var(--debit);
+  }
+
   .solde {
     display: flex;
     align-items: center;
