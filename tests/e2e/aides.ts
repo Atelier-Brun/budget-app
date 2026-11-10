@@ -1,5 +1,5 @@
 // Aides communes aux parcours. Données FICTIVES uniquement.
-import { type Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 
 export const APP = '/budget-app/';
 export const DEMO = '/budget-app/demo/';
@@ -46,3 +46,58 @@ export async function virer(page: Page, touches: string, depuis: string, vers: s
 
 /** Solde affiché à l'accueil pour un compte (nom en MAJUSCULES). */
 export const solde = (page: Page, nom: string) => page.getByRole('button', { name: new RegExp(`^${nom}`) });
+
+// ——— Accès (0.3.0) : code fictif utilisé par tous les parcours ———
+export const CODE = '48021573';
+
+/** Tape un code au clavier (le pavé intégré accepte aussi le clavier physique) puis Entrée. */
+export async function saisirCode(page: Page, code: string) {
+  await page.keyboard.type(code);
+  await page.keyboard.press('Enter');
+}
+
+/** Premier lancement : code choisi et confirmé, code de secours noté puis vérifié. Renvoie le code de secours. */
+export async function creerCode(page: Page, code = CODE): Promise<string> {
+  await expect(page.getByRole('heading', { name: 'Choisissez votre code' })).toBeVisible();
+  await saisirCode(page, code);
+  await expect(page.getByRole('heading', { name: 'Confirmez votre code' })).toBeVisible();
+  await saisirCode(page, code);
+  const secours = (await page.getByLabel('Code de secours', { exact: true }).textContent())!;
+  await page.getByRole('button', { name: 'Je l’ai noté' }).click();
+  const n = Number((await page.getByText(/Recopiez le groupe n° \d/).textContent())!.match(/\d/)![0]);
+  await page.getByLabel(/Recopiez le groupe/).fill(secours.split('-')[n - 1]!);
+  await page.getByRole('button', { name: 'Valider' }).click();
+  await expect(nav(page)).toBeVisible();
+  return secours;
+}
+
+export async function demarrer(page: Page, url = APP): Promise<string> {
+  await page.goto(url);
+  return creerCode(page);
+}
+
+export async function deverrouiller(page: Page, code = CODE) {
+  await expect(page.getByRole('heading', { name: 'Saisissez votre code' })).toBeVisible();
+  await saisirCode(page, code);
+  await expect(nav(page)).toBeVisible();
+}
+
+export async function recharger(page: Page) {
+  await page.reload();
+  await deverrouiller(page);
+}
+
+// ——— Captures et console (0.3.0) ———
+/** Capture d'écran après la fin des animations d'entrée (≤ 200 ms). */
+export async function capture(page: Page, nom: string) {
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: `test-results/captures/budget-030-${nom}.png` });
+}
+
+/** Toute la console et les erreurs de la page : rien ne doit y apparaître (ni code, ni erreur). */
+export function journal(page: Page): string[] {
+  const l: string[] = [];
+  page.on('console', (m) => l.push(m.text()));
+  page.on('pageerror', (e) => l.push(`ERREUR ${e.message}`));
+  return l;
+}

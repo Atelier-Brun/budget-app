@@ -1,8 +1,6 @@
 // Stockage (1d) dans le vrai moteur WebKit : création, séparation app/démo, conservation, versions. Données FICTIVES.
 import { expect, test, type Page } from '@playwright/test';
-
-const APP = '/budget-app/';
-const DEMO = '/budget-app/demo/';
+import { APP, creerCode, DEMO } from './aides';
 
 /** Attend que la base existe, puis renvoie { version, magasins }. */
 async function decrire(page: Page, nom: string) {
@@ -47,16 +45,17 @@ function comptes(page: Page, nom: string, valeur?: object) {
 
 const FICTIF = { id: 'id-fictif-1', nom: 'COMPTE FICTIF', soldeDepart: 12_345, dateDepart: '2026-11-10' };
 
-test('l’app crée sa base v1 ; la démo a la sienne et ne touche pas à la base réelle', async ({ page }) => {
+test('l’app crée sa base v2 ; la démo a la sienne et ne touche pas à la base réelle', async ({ page }) => {
   await page.goto(APP);
   expect(await decrire(page, 'budget')).toEqual({
-    version: 1,
-    magasins: ['categories', 'comptes', 'meta', 'operations'],
+    version: 2,
+    magasins: ['categories', 'coffre', 'comptes', 'copies', 'meta', 'operations'],
   });
   await comptes(page, 'budget', FICTIF);
 
   await page.goto(DEMO);
-  expect((await decrire(page, 'budget-demo')).version).toBe(1);
+  await creerCode(page);
+  expect((await decrire(page, 'budget-demo')).version).toBe(2);
   await expect(page.getByRole('button', { name: /^COMPTE COURANT/ })).toBeVisible(); // démo remplie
   expect(await comptes(page, 'budget-demo')).not.toContainEqual(FICTIF);
   expect(await comptes(page, 'budget')).toEqual([FICTIF]); // base réelle intacte

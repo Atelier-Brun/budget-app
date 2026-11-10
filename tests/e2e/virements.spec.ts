@@ -1,10 +1,10 @@
 // Virements, dépôts/retraits sur un tiers, raccourcis de la fiche (étape 2). Règle unique : Crédit monte, Débit baisse.
 // Données FICTIVES uniquement.
 import { expect, test } from '@playwright/test';
-import { APP, categorie, compte, feuille, nav, plus, solde, taper, virer } from './aides';
+import { APP, creerCode, demarrer, recharger, categorie, compte, feuille, nav, plus, solde, taper, virer } from './aides';
 
 test('courant → épargne puis courant → tiers (test obligatoire) : soldes, message, conservés après rechargement', async ({ page }) => {
-  await page.goto(APP);
+  await demarrer(page);
   await compte(page, 'Compte fictif', { solde: '500' });
   await compte(page, 'Livret fictif', { type: 'Épargne' });
   await compte(page, 'Ami fictif', { type: 'Tiers' });
@@ -24,13 +24,13 @@ test('courant → épargne puis courant → tiers (test obligatoire) : soldes, m
   await expect(solde(page, 'AMI FICTIF')).toContainText('0,00 €');
   await expect(solde(page, 'COMPTE FICTIF')).toContainText('300,00 €');
 
-  await page.reload();
+  await recharger(page);
   await expect(solde(page, 'COMPTE FICTIF')).toContainText('300,00 €');
   await expect(solde(page, 'LIVRET FICTIF')).toContainText('200,00 €');
   await expect(solde(page, 'AMI FICTIF')).toContainText('0,00 €');
   const ecritures = await page.evaluate(
     () =>
-      new Promise<{ virementId?: string; categorieId?: string }[]>((ok) => {
+      new Promise<object[]>((ok) => {
         const r = indexedDB.open('budget');
         r.onsuccess = () => {
           const g = r.result.transaction('operations').objectStore('operations').getAll();
@@ -38,13 +38,13 @@ test('courant → épargne puis courant → tiers (test obligatoire) : soldes, m
         };
       }),
   );
-  expect(ecritures).toHaveLength(6); // 3 virements = 3 paires liées, sans catégorie
-  expect(new Set(ecritures.map((e) => e.virementId)).size).toBe(3);
-  expect(ecritures.every((e) => e.virementId && !e.categorieId)).toBe(true);
+  expect(ecritures).toHaveLength(6); // 3 virements = 3 paires d'écritures
+  // Stockées chiffrées : seuls l'identifiant, l'IV et le contenu chiffré sont présents.
+  expect(ecritures.every((e) => Object.keys(e).sort().join() === 'd,id,iv')).toBe(true);
 });
 
 test('un seul compte : pas de virement ; sans compte d’arrivée : refus ; tiers → tiers autorisé', async ({ page }) => {
-  await page.goto(APP);
+  await demarrer(page);
   await compte(page, 'Ami fictif', { type: 'Tiers' });
   await plus(page).click();
   await feuille(page).getByText('Virement', { exact: true }).click();
@@ -66,7 +66,7 @@ test('un seul compte : pas de virement ; sans compte d’arrivée : refus ; tier
 });
 
 test('tiers : dépôt (Crédit) et retrait (Débit) avec l’extérieur, sans catégorie, autres comptes intacts', async ({ page }) => {
-  await page.goto(APP);
+  await demarrer(page);
   await compte(page, 'Compte fictif', { solde: '500' });
   await compte(page, 'Ami fictif', { type: 'Tiers' });
   for (const [sens, attendu] of [['Crédit', '+100,00 €'], ['Débit', '0,00 €'], ['Débit', '−100,00 €']] as const) {
@@ -85,7 +85,7 @@ test('tiers : dépôt (Crédit) et retrait (Débit) avec l’extérieur, sans ca
 });
 
 test('fiche compte : solde, raccourcis Débit/Crédit/Virement avec ce compte déjà choisi ; inversion ; aperçu ; dernier compte retenu', async ({ page }) => {
-  await page.goto(APP);
+  await demarrer(page);
   await compte(page, 'Compte fictif', { solde: '500' });
   await compte(page, 'Livret fictif', { type: 'Épargne' });
   await categorie(page, 'Courses fictives');
@@ -104,7 +104,7 @@ test('fiche compte : solde, raccourcis Débit/Crédit/Virement avec ce compte d�
   await expect(solde(page, 'LIVRET FICTIF')).toContainText('25,00 €');
 
   // Le dernier compte utilisé est proposé, même après rechargement.
-  await page.reload();
+  await recharger(page);
   await plus(page).click();
   await expect(feuille(page).getByLabel('Compte').locator('option:checked')).toHaveText('LIVRET FICTIF');
   await feuille(page).getByRole('button', { name: 'Annuler' }).click();
@@ -130,7 +130,7 @@ test('fiche compte : solde, raccourcis Débit/Crédit/Virement avec ce compte d�
 });
 
 test('type non modifiable pour un compte qui a des virements (message clair), libre sinon', async ({ page }) => {
-  await page.goto(APP);
+  await demarrer(page);
   await compte(page, 'Compte fictif', { solde: '500' });
   await compte(page, 'Livret fictif', { type: 'Épargne' });
   await compte(page, 'Autre fictif');
@@ -146,21 +146,25 @@ test('type non modifiable pour un compte qui a des virements (message clair), li
   await expect(page.getByRole('region', { name: 'Tiers' })).toContainText('AUTRE FICTIF');
 });
 
-test('données de la version 0.1.4 (sans virement) relues sans perte, puis virement ajouté', async ({ page }) => {
+test('données 0.1.4 et 0.2.0 (virement, dernier compte) relues sans perte, chiffrées, puis virement ajouté', async ({ page }) => {
   await page.goto(APP);
-  await expect(page.getByRole('button', { name: 'Créer un compte' })).toBeVisible(); // base v1 créée
+  await expect(page.getByRole('heading', { name: 'Choisissez votre code' })).toBeVisible(); // base créée
   // Enregistrements exactement au format de la 0.1.4.
   await page.evaluate(
     () =>
       new Promise<void>((ok, ko) => {
         const r = indexedDB.open('budget');
         r.onsuccess = () => {
-          const tx = r.result.transaction(['comptes', 'categories', 'operations'], 'readwrite');
+          const tx = r.result.transaction(['comptes', 'categories', 'operations', 'meta'], 'readwrite');
           const depart = '2026-01-01';
           tx.objectStore('comptes').put({ id: 'c1', nom: 'COMPTE ANCIEN', type: 'courant', soldeDepart: 100_00, dateDepart: depart, archive: false, principal: true });
           tx.objectStore('comptes').put({ id: 'c2', nom: 'LIVRET ANCIEN', type: 'epargne', soldeDepart: 0, dateDepart: depart, archive: false, principal: false });
           tx.objectStore('categories').put({ id: 'k1', nom: 'CATÉGORIE ANCIENNE', sens: 'debit', archive: false });
           tx.objectStore('operations').put({ id: 'o1', compteId: 'c1', categorieId: 'k1', date: depart, sens: 'debit', montant: 12_34, note: 'ancienne' });
+          // Format 0.2.0 : virement (2 écritures liées) et dernier compte utilisé.
+          tx.objectStore('operations').put({ id: 'v1', compteId: 'c1', date: depart, sens: 'debit', montant: 10_00, virementId: 'w1' });
+          tx.objectStore('operations').put({ id: 'v2', compteId: 'c2', date: depart, sens: 'credit', montant: 10_00, virementId: 'w1' });
+          tx.objectStore('meta').put({ cle: 'derniere-saisie', compteId: 'c2', versId: 'c1' });
           tx.oncomplete = () => {
             r.result.close();
             ok();
@@ -170,9 +174,15 @@ test('données de la version 0.1.4 (sans virement) relues sans perte, puis virem
       }),
   );
   await page.reload();
-  await expect(solde(page, 'COMPTE ANCIEN')).toContainText('87,66 €');
+  await expect(page.getByText('Vos données vont être chiffrées.')).toBeVisible();
+  await creerCode(page);
+  await expect(solde(page, 'COMPTE ANCIEN')).toContainText('77,66 €');
+  await expect(solde(page, 'LIVRET ANCIEN')).toContainText('10,00 €');
+  await plus(page).click();
+  await expect(feuille(page).getByLabel('Compte')).toHaveValue('c2'); // dernier compte retenu
+  await feuille(page).getByRole('button', { name: 'Annuler' }).click();
   await virer(page, '6000', 'COMPTE ANCIEN', 'LIVRET ANCIEN');
-  await page.reload();
-  await expect(solde(page, 'COMPTE ANCIEN')).toContainText('27,66 €');
-  await expect(solde(page, 'LIVRET ANCIEN')).toContainText('60,00 €');
+  await recharger(page);
+  await expect(solde(page, 'COMPTE ANCIEN')).toContainText('17,66 €');
+  await expect(solde(page, 'LIVRET ANCIEN')).toContainText('70,00 €');
 });

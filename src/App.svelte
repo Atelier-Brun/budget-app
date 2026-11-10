@@ -1,8 +1,14 @@
 <script lang="ts">
-  // Coquille de l'app : base de données, écran courant, barre de navigation, bandeaux.
-  // Navigation par état (aucune donnée dans l'URL).
+  // Coquille de l'app : base de données, accès (code, verrouillage), écran courant, barre de navigation, bandeaux.
+  // Navigation par état (aucune donnée dans l'URL). La clé de données n'existe qu'en mémoire, app déverrouillée.
   import { onMount } from 'svelte';
   import Barre from './composants/Barre.svelte';
+  import Logo from './composants/Logo.svelte';
+  import type { Restaure } from './composants/Restauration.svelte';
+  import ChangerCode from './ecrans/ChangerCode.svelte';
+  import Creation from './ecrans/Creation.svelte';
+  import Deverrouillage from './ecrans/Deverrouillage.svelte';
+  import Sauvegarde from './ecrans/Sauvegarde.svelte';
   import Accueil from './ecrans/Accueil.svelte';
   import Carnet from './ecrans/Carnet.svelte';
   import Categories from './ecrans/Categories.svelte';
@@ -14,10 +20,25 @@
   import { ecrituresLiees } from './lib/carnet';
   import { nouvelleCategorie, type Categorie } from './lib/categories';
   import { nouveauCompte, type Compte } from './lib/comptes';
-  import { aujourdHui } from './lib/dates';
+  import { ErreurCoffre, type Coffre } from './lib/coffre';
+  import { ajouterJours, aujourdHui, formaterDate } from './lib/dates';
   import { genererDemo } from './lib/demo';
   import type { OperationComplete } from './lib/operations';
-  import { demanderPersistance, ecrire, lireTout, ouvrirBase, traduire } from './lib/stockage';
+  import { ErreurSauvegarde } from './lib/sauvegarde';
+  import {
+    copierInterne,
+    demanderPersistance,
+    DONNEES,
+    ecrire,
+    ecrireChiffre,
+    lireChiffre,
+    lireTout,
+    ouvrirBase,
+    remplacer,
+    traduire,
+    type Clair,
+    type Tx,
+  } from './lib/stockage';
   import { enregistrerSW } from './sw-enregistrement';
 
   type Ecran =
@@ -27,12 +48,26 @@
     | { nom: 'comptes' }
     | { nom: 'compte'; compte: Compte; depuis: 'accueil' | 'comptes' }
     | { nom: 'categories' }
-    | { nom: 'categorie'; categorie: Categorie };
+    | { nom: 'categorie'; categorie: Categorie }
+    | { nom: 'code' }
+    | { nom: 'sauvegarde' };
+
+  /** Verrouillage automatique après 2 min sans geste (et dès que l'app passe en arrière-plan). */
+  const INACTIVITE = 2 * 60 * 1000;
 
   const demo: boolean = __DEMO__;
   let activer = $state<(() => void) | null>(null);
   let alerte = $state('');
   let db = $state<IDBDatabase | null>(null);
+  let etat = $state<'chargement' | 'creation' | 'verrouille' | 'ouvert'>('chargement');
+  let cle = $state.raw<CryptoKey | null>(null);
+  let coffre = $state.raw<Coffre | null>(null);
+  /** Données 0.2.0 présentes en clair avant la création du code. */
+  let avecDonnees = $state(false);
+  let masque = $state(false);
+  let dernierGeste = Date.now();
+  /** Date de la dernière sauvegarde externe (magasin « meta », chiffré). */
+  let derniere = $state<string | null>(null);
   let persistant = $state<boolean | null>(null);
   let comptes = $state<Compte[]>([]);
   let categories = $state<Categorie[]>([]);
@@ -48,30 +83,127 @@
   let message = $state('');
   let minuterie: ReturnType<typeof setTimeout> | undefined;
 
-  async function charger(base: IDBDatabase) {
-    let meta: { cle: string; compteId?: string; versId?: string }[];
-    [comptes, categories, operations, meta] = await Promise.all([
-      lireTout<Compte>(base, 'comptes'),
-      lireTout<Categorie>(base, 'categories'),
-      lireTout<OperationComplete>(base, 'operations'),
-      lireTout<{ cle: string; compteId?: string; versId?: string }>(base, 'meta'),
+  /** Messages fixes, sans donnée ni détail technique. */
+  const messageErreur = (e: unknown) => (e instanceof ErreurCoffre || e instanceof ErreurSauvegarde ? e.message : traduire(e).message);
+
+  async function charger(base: IDBDatabase, k: CryptoKey) {
+    type Meta = { cle: string; compteId?: string; versId?: string; date?: string };
+    const [c, cat, ops, meta] = await Promise.all([
+      lireChiffre<Compte>(base, k, 'comptes'),
+      lireChiffre<Categorie>(base, k, 'categories'),
+      lireChiffre<OperationComplete>(base, k, 'operations'),
+      lireChiffre<Meta>(base, k, 'meta'),
     ]);
+    if (cle !== k) return; // verrouillée entre-temps : rien ne doit réapparaître
+    [comptes, categories, operations] = [c, cat, ops];
     const d = meta.find((m) => m.cle === 'derniere-saisie');
     dernier = { ...(d?.compteId ? { compteId: d.compteId } : {}), ...(d?.versId ? { versId: d.versId } : {}) };
+    derniere = meta.find((m) => m.cle === 'sauvegarde-externe')?.date ?? null;
   }
 
-  /** Une écriture « tout ou rien » dans la base, puis relecture : l'écran montre toujours ce qui est enregistré. */
-  async function modifier(magasins: string[], travail: (tx: IDBTransaction) => void): Promise<boolean> {
-    if (!db) return false;
+  /** Une écriture chiffrée « tout ou rien » dans la base, puis relecture : l'écran montre toujours ce qui est enregistré. */
+  async function modifier(magasins: string[], travail: (tx: Tx) => void): Promise<boolean> {
+    if (!db || !cle) return false;
+    const [base, k] = [db, cle];
     try {
-      const base = db;
-      await ecrire(base, magasins, travail);
-      await charger(base);
+      await ecrireChiffre(base, k, magasins, travail);
+      await charger(base, k);
       return true;
     } catch (e) {
-      alerte = traduire(e).message;
+      alerte = messageErreur(e);
       return false;
     }
+  }
+
+  async function ouvrirSession(k: CryptoKey, c: Coffre) {
+    if (!db) return;
+    [cle, coffre, alerte] = [k, c, ''];
+    dernierGeste = Date.now();
+    try {
+      await charger(db, k);
+      if (demo && comptes.length + categories.length + operations.length === 0) await remplirDemo();
+      etat = 'ouvert';
+    } catch (e) {
+      cle = null;
+      alerte = messageErreur(e);
+    }
+  }
+
+  /** Verrouillage : la clé et toutes les données quittent la mémoire, l'écran est remplacé. */
+  function verrouiller() {
+    [cle, comptes, categories, operations, dernier, derniere] = [null, [], [], [], {}, null];
+    fermerSaisie();
+    [ecran, message, etat] = [{ nom: 'accueil' }, '', 'verrouille'];
+  }
+
+  /** Premier code : les données 0.2.0 (en clair) sont chiffrées et le coffre écrit, en une seule transaction. */
+  async function terminerCreation(c: Coffre, k: CryptoKey): Promise<boolean> {
+    if (!db) return false;
+    const base = db;
+    try {
+      const listes = await Promise.all(DONNEES.map((m) => lireTout<object>(base, m)));
+      await remplacer(base, k, Object.fromEntries(DONNEES.map((m, i) => [m, listes[i]])) as Clair, c);
+      await ouvrirSession(k, c);
+      return true;
+    } catch (e) {
+      alerte = messageErreur(e);
+      return false;
+    }
+  }
+
+  /** Installation neuve depuis une sauvegarde : données et coffre du fichier. */
+  async function installer(r: Restaure): Promise<boolean> {
+    if (!db || !r.coffre) return false;
+    try {
+      await remplacer(db, r.cle, r.donnees, r.coffre);
+      await ouvrirSession(r.cle, r.coffre);
+      return true;
+    } catch (e) {
+      alerte = messageErreur(e);
+      return false;
+    }
+  }
+
+  /** Restauration (app déverrouillée) : copie de secours, puis remplacement chiffré avec la clé actuelle. */
+  async function restaurer(r: Restaure): Promise<boolean> {
+    if (!db || !cle) return false;
+    const [base, k] = [db, cle];
+    try {
+      await copierInterne(base);
+      await remplacer(base, k, r.donnees);
+      await charger(base, k);
+      aller({ nom: 'accueil' });
+      annoncer('Restauration terminée');
+      return true;
+    } catch (e) {
+      alerte = messageErreur(e);
+      return false;
+    }
+  }
+
+  async function enregistrerCoffre(c: Coffre): Promise<boolean> {
+    if (!db) return false;
+    try {
+      await ecrire(db, ['coffre'], (tx) => void tx.objectStore('coffre').put(c));
+      coffre = c;
+      aller({ nom: 'reglages' });
+      annoncer('Code modifié');
+      return true;
+    } catch (e) {
+      alerte = messageErreur(e);
+      return false;
+    }
+  }
+
+  const noterSauvegarde = (date: string) => modifier(['meta'], (tx) => tx.objectStore('meta').put({ cle: 'sauvegarde-externe', date }));
+
+  const rappel = $derived(
+    etat === 'ouvert' && ecran.nom === 'accueil' && comptes.length > 0 && (!derniere || ajouterJours(derniere, 7) < aujourdHui()),
+  );
+
+  function visibilite() {
+    masque = document.visibilityState === 'hidden';
+    if (masque && etat === 'ouvert') verrouiller();
   }
 
   const enregistrerComptes = (liste: Compte[]) =>
@@ -169,6 +301,9 @@
 
   onMount(() => {
     enregistrerSW((f) => (activer = f));
+    const horloge = setInterval(() => {
+      if (etat === 'ouvert' && Date.now() - dernierGeste >= INACTIVITE) verrouiller();
+    }, 5000);
     // Bases séparées : la démo ne lit ni n'écrit jamais la base réelle.
     ouvrirBase(demo ? 'budget-demo' : 'budget', () => {
       db = null;
@@ -176,23 +311,44 @@
     })
       .then(async (base) => {
         db = base;
-        await charger(base);
-        if (demo && comptes.length + categories.length + operations.length === 0) await remplirDemo();
+        const c = (await lireTout<Coffre>(base, 'coffre')).find((x) => x.cle === 'coffre');
+        if (c) {
+          coffre = c;
+          etat = 'verrouille';
+          // Copie interne (données déjà chiffrées) à chaque ouverture.
+          await copierInterne(base).catch((e: unknown) => (alerte = traduire(e).message));
+        } else {
+          avecDonnees = (await Promise.all(DONNEES.map((m) => lireTout(base, m)))).some((l) => l.length > 0);
+          etat = 'creation';
+        }
         persistant = await demanderPersistance();
       })
       .catch((e: unknown) => (alerte = traduire(e).message));
+    return () => clearInterval(horloge);
   });
 </script>
 
+<svelte:document onvisibilitychange={visibilite} />
+<svelte:window onpointerdowncapture={() => (dernierGeste = Date.now())} onkeydowncapture={() => (dernierGeste = Date.now())} />
+
 {#if demo}
   <div class="bandeau demo" role="note">DÉMO – données fictives</div>
-{:else}
-  <!-- Retiré à l'étape 3 (chiffrement + sauvegarde validés). -->
-  <div class="bandeau travail" role="note">Version de travail : aucune donnée réelle avant l’activation du chiffrement</div>
 {/if}
 
 {#if alerte}
   <p class="alerte" role="alert">{alerte}</p>
+{/if}
+
+{#if etat === 'creation' && db}
+  <main><Creation {demo} {avecDonnees} onterminer={terminerCreation} onrestaurer={installer} /></main>
+{:else if etat === 'verrouille' && db && coffre}
+  <main><Deverrouillage {db} {coffre} {demo} onouvert={ouvrirSession} /></main>
+{:else if etat === 'ouvert'}
+{#if rappel}
+  <div class="rappel carte" role="note">
+    <p>{derniere ? `Dernière sauvegarde externe : le ${formaterDate(derniere)}.` : 'Aucune sauvegarde externe.'}</p>
+    <button type="button" class="bouton" onclick={() => aller({ nom: 'sauvegarde' })}>Sauvegarder</button>
+  </div>
 {/if}
 
 <main>
@@ -212,10 +368,29 @@
   {:else if ecran.nom === 'reglages'}
     <Reglages
       {persistant}
+      {derniere}
       oncomptes={() => aller({ nom: 'comptes' })}
       oncategories={() => aller({ nom: 'categories' })}
+      oncode={() => aller({ nom: 'code' })}
+      onsauvegarde={() => aller({ nom: 'sauvegarde' })}
+      onverrouiller={verrouiller}
       onreinitialiser={demo ? remplirDemo : null}
     />
+  {:else if ecran.nom === 'code'}
+    {#if coffre}<ChangerCode {coffre} onenregistrer={enregistrerCoffre} onretour={() => aller({ nom: 'reglages' })} />{/if}
+  {:else if ecran.nom === 'sauvegarde'}
+    {#if db && cle && coffre}
+      <Sauvegarde
+        {db}
+        {cle}
+        {coffre}
+        {demo}
+        {derniere}
+        onsauvegarde={noterSauvegarde}
+        onrestaurer={restaurer}
+        onretour={() => aller({ nom: 'reglages' })}
+      />
+    {/if}
   {:else if ecran.nom === 'comptes'}
     <Comptes {comptes} onouvrir={ouvrir('comptes')} oncreer={creer('comptes')} onretour={() => aller({ nom: 'reglages' })} />
   {:else if ecran.nom === 'categories'}
@@ -283,12 +458,17 @@
 {#if message}
   <p class="toast" role="status">{message}</p>
 {/if}
+{/if}
 
 {#if activer}
   <div class="maj" role="status">
     <span>Nouvelle version disponible</span>
     <button type="button" onclick={activer}>Mettre à jour</button>
   </div>
+{/if}
+
+{#if masque}
+  <div class="masque" aria-hidden="true"><Logo taille={72} /></div>
 {/if}
 
 <style>
@@ -307,10 +487,18 @@
     color: var(--fond);
   }
 
-  .travail {
-    background: var(--surface-2);
-    color: var(--accent);
-    box-shadow: 0 1px 0 rgb(200 169 126 / 0.35);
+  .rappel {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 12px 16px 0;
+    padding: 10px 10px 10px 16px;
+    font-size: 0.9375rem;
+  }
+
+  .rappel p {
+    margin: 0;
   }
 
   /* Sous un bandeau, l'écran n'a plus à éviter l'encoche lui-même. */

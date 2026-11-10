@@ -197,7 +197,7 @@
   {:else}
     <form class="formulaire" onsubmit={valider} novalidate>
       <output class="montant" class:vide={montant === 0} aria-label="Montant" aria-live="polite">{formaterMontant(montant)}</output>
-      <Pave bind:montant />
+      <Pave ontouche={(t) => (montant = taper(montant, t))} />
 
       {#if mode === 'virement'}
         <div class="sens-virement">

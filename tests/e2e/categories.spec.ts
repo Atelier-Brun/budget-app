@@ -1,7 +1,7 @@
 // Morceau 2 de 1e : catégories. Données FICTIVES uniquement.
 import { expect, test, type Page } from '@playwright/test';
 
-const APP = '/budget-app/';
+import { compte, demarrer, feuille, plus, recharger, taper } from './aides';
 
 async function ouvrirCategories(page: Page) {
   await page.getByRole('navigation', { name: 'Navigation principale' }).getByRole('button', { name: 'Réglages' }).click();
@@ -16,35 +16,19 @@ async function creer(page: Page, nom: string, sens?: 'Crédit') {
   await page.getByRole('button', { name: 'Enregistrer' }).click();
 }
 
-/** Ajoute par l'API brute une opération fictive utilisant la catégorie nommée, puis recharge l'app. */
+/** Utilise la catégorie nommée dans une vraie saisie (sur un compte fictif), puis revient aux catégories. */
 async function utiliser(page: Page, nom: string) {
-  await page.evaluate(
-    (n) =>
-      new Promise<void>((ok, ko) => {
-        const r = indexedDB.open('budget');
-        r.onsuccess = () => {
-          const db = r.result;
-          const lecture = db.transaction('categories').objectStore('categories').getAll();
-          lecture.onsuccess = () => {
-            const cat = (lecture.result as { id: string; nom: string }[]).find((c) => c.nom === n)!;
-            const tx = db.transaction('operations', 'readwrite');
-            tx.objectStore('operations').put({ id: 'op-fictive', compteId: 'x', date: '2026-11-10', sens: 'debit', montant: 100, categorieId: cat.id });
-            tx.oncomplete = () => {
-              db.close();
-              ok();
-            };
-            tx.onabort = () => ko(tx.error);
-          };
-        };
-      }),
-    nom,
-  );
-  await page.reload();
+  await compte(page, 'Compte fictif');
+  await plus(page).click();
+  await taper(page, '100');
+  await feuille(page).getByText(nom, { exact: true }).click();
+  await feuille(page).getByRole('button', { name: 'Valider' }).click();
+  await recharger(page);
   await ouvrirCategories(page);
 }
 
 test('création : majuscules, ordre alphabétique, sens par défaut affiché, conservé', async ({ page }) => {
-  await page.goto(APP);
+  await demarrer(page);
   await ouvrirCategories(page);
   await expect(page.getByText('Aucune catégorie.', { exact: false })).toBeVisible();
   await creer(page, 'zéro fictif');
@@ -53,13 +37,13 @@ test('création : majuscules, ordre alphabétique, sens par défaut affiché, co
 
   const lignes = page.getByRole('list').first().getByRole('button');
   await expect(lignes).toHaveText(['ABRI FICTIF Crédit', 'ÉCOLE FICTIVE Débit', 'ZÉRO FICTIF Débit']);
-  await page.reload();
+  await recharger(page);
   await ouvrirCategories(page);
   await expect(lignes).toHaveCount(3);
 });
 
 test('refus clairs : vide et doublon (accents/casse) ; modification', async ({ page }) => {
-  await page.goto(APP);
+  await demarrer(page);
   await ouvrirCategories(page);
   await creer(page, 'Été fictif');
   await page.getByRole('button', { name: 'Nouvelle catégorie' }).click();
@@ -77,7 +61,7 @@ test('refus clairs : vide et doublon (accents/casse) ; modification', async ({ p
 });
 
 test('jamais utilisée : suppression définitive après confirmation', async ({ page }) => {
-  await page.goto(APP);
+  await demarrer(page);
   await ouvrirCategories(page);
   await creer(page, 'Temporaire');
   await page.getByRole('button', { name: /^TEMPORAIRE/ }).click();
@@ -88,7 +72,7 @@ test('jamais utilisée : suppression définitive après confirmation', async ({ 
 });
 
 test('déjà utilisée : archivage seulement, historique gardé, réactivation', async ({ page }) => {
-  await page.goto(APP);
+  await demarrer(page);
   await ouvrirCategories(page);
   await creer(page, 'Servie');
   await utiliser(page, 'SERVIE');

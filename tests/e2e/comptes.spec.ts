@@ -1,8 +1,8 @@
 // Morceau 1 de 1e : comptes, Réglages, bandeaux. Données FICTIVES uniquement.
 import { expect, test, type Page } from '@playwright/test';
 
-const APP = '/budget-app/';
-const DEMO = '/budget-app/demo/';
+import { demarrer, recharger } from './aides';
+import { DEMO } from './aides';
 
 const nav = (page: Page) => page.getByRole('navigation', { name: 'Navigation principale' });
 
@@ -24,7 +24,7 @@ async function nouveauCompte(page: Page, nom: string, opts: Parameters<typeof re
 }
 
 test('premier compte depuis l’accueil : majuscules, principal, solde affiché', async ({ page }) => {
-  await page.goto(APP);
+  await demarrer(page);
   await page.getByRole('button', { name: 'Créer un compte' }).click();
   await remplir(page, '  compte   fictif ', { solde: '1 234,5' });
 
@@ -33,12 +33,12 @@ test('premier compte depuis l’accueil : majuscules, principal, solde affiché'
   await expect(carte).toContainText('1 234,50 €');
   await expect(page.getByRole('heading', { name: 'Courants' })).toBeVisible();
 
-  await page.reload(); // conservé dans la base
+  await recharger(page); // conservé dans la base
   await expect(page.getByRole('button', { name: /COMPTE FICTIF/ })).toBeVisible();
 });
 
 test('refus clairs : nom vide, doublon (accents/casse), montant invalide', async ({ page }) => {
-  await page.goto(APP);
+  await demarrer(page);
   await nouveauCompte(page, 'Livret Été', { type: 'Épargne' });
   await page.getByRole('button', { name: 'Nouveau compte' }).click();
 
@@ -51,7 +51,7 @@ test('refus clairs : nom vide, doublon (accents/casse), montant invalide', async
 });
 
 test('sections par type, sous-totaux, tiers avec signe et légende', async ({ page }) => {
-  await page.goto(APP);
+  await demarrer(page);
   await nouveauCompte(page, 'Banque B', { solde: '100' });
   await nouveauCompte(page, 'Banque A', { solde: '30', negatif: true });
   await nouveauCompte(page, 'Ami fictif', { type: 'Tiers', solde: '20', negatif: true });
@@ -69,7 +69,7 @@ test('sections par type, sous-totaux, tiers avec signe et légende', async ({ pa
 });
 
 test('archiver le principal : choix du remplaçant, historique gardé, réactivation', async ({ page }) => {
-  await page.goto(APP);
+  await demarrer(page);
   await nouveauCompte(page, 'Banque A');
   await nouveauCompte(page, 'Banque B');
   await nouveauCompte(page, 'Banque C');
@@ -87,14 +87,14 @@ test('archiver le principal : choix du remplaçant, historique gardé, réactiva
   await expect(page.getByRole('button', { name: /^BANQUE C.*Principal/ })).toBeVisible();
 });
 
-test('Réglages : version et stockage ; bandeau « Version de travail » dans l’app seulement', async ({ page }) => {
-  await page.goto(APP);
-  await expect(page.getByText('Version de travail : aucune donnée réelle avant l’activation du chiffrement')).toBeVisible();
+test('Réglages : version et stockage ; bandeau « Version de travail » retiré (étape 3)', async ({ page }) => {
+  await demarrer(page);
+  await expect(page.getByText(/Version de travail/)).toHaveCount(0);
   await nav(page).getByRole('button', { name: 'Réglages' }).click();
   await expect(page.getByText('Stockage persistant')).toBeVisible();
   await expect(page.getByText(/^(Activé|Non accordé par Safari)/)).toBeVisible();
 
-  await page.goto(DEMO);
+  await demarrer(page, DEMO);
   await expect(page.getByText('DÉMO – données fictives')).toBeVisible();
   await expect(page.getByText(/Version de travail/)).toHaveCount(0);
   await expect(page.getByRole('button', { name: /^COMPTE COURANT/ })).toBeVisible(); // base démo séparée, remplie

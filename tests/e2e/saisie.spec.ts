@@ -1,6 +1,6 @@
 // Saisie rapide (pavé numérique intégré), soldes, démo remplie. Données FICTIVES uniquement.
 import { expect, test, type Page } from '@playwright/test';
-import { APP, categorie, compte, DEMO, feuille, nav, plus, taper } from './aides';
+import { demarrer, recharger, categorie, compte, DEMO, feuille, nav, plus, taper } from './aides';
 
 const pave = (page: Page) => feuille(page).getByRole('group', { name: 'Pavé numérique' });
 
@@ -15,7 +15,7 @@ async function saisir(page: Page, touches: string, cat: string, opts: { compte?:
 }
 
 test('sans compte puis sans catégorie : la saisie oriente vers leur création', async ({ page }) => {
-  await page.goto(APP);
+  await demarrer(page);
   await plus(page).click();
   await expect(feuille(page)).toContainText('Aucun compte actif.');
   await feuille(page).getByRole('button', { name: 'Créer un compte' }).click();
@@ -30,7 +30,7 @@ test('sans compte puis sans catégorie : la saisie oriente vers leur création',
 });
 
 test('pavé numérique : rempli de droite à gauche en centimes, effacer, aucun clavier iOS', async ({ page }) => {
-  await page.goto(APP);
+  await demarrer(page);
   await compte(page, 'Compte fictif');
   await categorie(page, 'Courses fictives');
   await plus(page).click();
@@ -52,7 +52,7 @@ test('pavé numérique : rempli de droite à gauche en centimes, effacer, aucun 
 });
 
 test('saisie en 3 étapes : solde mis à jour, message, données conservées', async ({ page }) => {
-  await page.goto(APP);
+  await demarrer(page);
   await compte(page, 'Compte fictif', { solde: '100' });
   await categorie(page, 'Courses fictives');
   await categorie(page, 'Revenu fictif', true);
@@ -72,12 +72,12 @@ test('saisie en 3 étapes : solde mis à jour, message, données conservées', a
   await saisir(page, '2000', 'REVENU FICTIF'); // le sens suit la catégorie (crédit)
   await expect(page.getByRole('button', { name: /^COMPTE FICTIF/ })).toContainText('107,50 €');
 
-  await page.reload();
+  await recharger(page);
   await expect(page.getByRole('button', { name: /^COMPTE FICTIF/ })).toContainText('107,50 €');
 });
 
 test('refus clairs : catégorie et montant obligatoires, date avant le départ du compte', async ({ page }) => {
-  await page.goto(APP);
+  await demarrer(page);
   await compte(page, 'Compte fictif');
   await categorie(page, 'Courses fictives');
   await plus(page).click();
@@ -93,7 +93,7 @@ test('refus clairs : catégorie et montant obligatoires, date avant le départ d
 });
 
 test('compte tiers (option A) : libellés Débit/Crédit, débit de 40 → −40 (somme due par le tiers)', async ({ page }) => {
-  await page.goto(APP);
+  await demarrer(page);
   await compte(page, 'Compte fictif', { solde: '100' });
   await compte(page, 'Ami fictif', { type: 'Tiers' });
   await categorie(page, 'Prêt fictif');
@@ -111,7 +111,7 @@ test('compte tiers (option A) : libellés Débit/Crédit, débit de 40 → −40
 });
 
 test('démo : remplie au premier lancement, réinitialisable ; app réelle jamais remplie', async ({ page }) => {
-  await page.goto(DEMO);
+  await demarrer(page, DEMO);
   await expect(page.getByRole('button', { name: /^COMPTE COURANT.*Principal/ })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Tiers' }).getByRole('button')).toContainText('−15,00 €');
 
@@ -126,7 +126,7 @@ test('démo : remplie au premier lancement, réinitialisable ; app réelle jamai
   await expect(page.getByRole('button', { name: /^AMI EXEMPLE/ })).toBeVisible();
   await expect(page.getByRole('button', { name: /^AMI RENOMMÉ/ })).toHaveCount(0);
 
-  await page.goto(APP);
+  await demarrer(page);
   await expect(page.getByRole('button', { name: 'Créer un compte' })).toBeVisible();
   await nav(page).getByRole('button', { name: 'Réglages' }).click();
   await expect(page.getByText(/Réinitialiser/)).toHaveCount(0);

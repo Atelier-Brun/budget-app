@@ -1,18 +1,16 @@
 <script lang="ts">
-  // Pavé numérique intégré (indépendant du clavier iOS) : montant rempli de droite à gauche, en centimes.
-  import { taper } from '../lib/montants';
-
-  let { montant = $bindable() }: { montant: number } = $props();
+  // Pavé numérique intégré (indépendant du clavier iOS) : montant (Saisie) ou code (verrouillage).
+  let { ontouche, desactive = false }: { ontouche: (t: string) => void; desactive?: boolean } = $props();
   const CHIFFRES = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
 </script>
 
 <div class="pave" role="group" aria-label="Pavé numérique">
   {#each CHIFFRES as c (c)}
-    <button type="button" class="touche" onclick={() => (montant = taper(montant, c))}>{c}</button>
+    <button type="button" class="touche" disabled={desactive} onclick={() => ontouche(c)}>{c}</button>
   {/each}
   <span aria-hidden="true"></span>
-  <button type="button" class="touche" onclick={() => (montant = taper(montant, '0'))}>0</button>
-  <button type="button" class="touche effacer" aria-label="Effacer" onclick={() => (montant = taper(montant, 'effacer'))}>
+  <button type="button" class="touche" disabled={desactive} onclick={() => ontouche('0')}>0</button>
+  <button type="button" class="touche effacer" aria-label="Effacer" disabled={desactive} onclick={() => ontouche('effacer')}>
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5h11v14H9l-6-7zM12.5 9.5l5 5M17.5 9.5l-5 5" /></svg>
   </button>
 </div>
@@ -38,6 +36,10 @@
   .touche:active {
     background: var(--surface-1);
     box-shadow: 0 1px 2px rgb(0 0 0 / 0.5) inset;
+  }
+
+  .touche:disabled {
+    opacity: 0.4;
   }
 
   .effacer {

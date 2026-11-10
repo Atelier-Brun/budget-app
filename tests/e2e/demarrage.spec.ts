@@ -1,7 +1,8 @@
 import { expect, test } from '@playwright/test';
+import { demarrer } from './aides';
 
 test("l'app démarre : nom, barre de navigation, version dans Réglages", async ({ page }) => {
-  await page.goto('./');
+  await demarrer(page);
   await expect(page).toHaveTitle('BUDGET');
   await expect(page.getByRole('heading', { name: 'BUDGET' })).toBeVisible();
   const nav = page.getByRole('navigation', { name: 'Navigation principale' });

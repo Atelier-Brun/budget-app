@@ -43,7 +43,7 @@ const casse: Migration = () => {
 
 describe('ouvrirBase', () => {
   it('v1 : crée les 4 magasins', async () => {
-    const db = await ouvrir();
+    const db = await ouvrir(MIGRATIONS.slice(0, 1));
     expect(db.version).toBe(1);
     expect([...db.objectStoreNames].sort()).toEqual(['categories', 'comptes', 'meta', 'operations']);
     db.close();
@@ -180,5 +180,66 @@ describe('demanderPersistance', () => {
     expect(await demanderPersistance(undefined)).toBe(false);
     expect(await demanderPersistance({} as StorageManager)).toBe(false);
     expect(await demanderPersistance(stockage(false, 'erreur'))).toBe(false);
+  });
+});
+
+describe('stockage chiffré (0.3.0)', async () => {
+  const { creerCoffre } = await import('./coffre.ts');
+  const { copierInterne, COPIES_MAX, ecrireChiffre, lireBrut, lireChiffre, remplacer } = await import('./stockage.ts');
+
+  it('v2 : ajoute coffre et copies sans toucher aux données v1', async () => {
+    const db1 = await ouvrir(MIGRATIONS.slice(0, 1));
+    await ecrire(db1, ['comptes'], (tx) => void tx.objectStore('comptes').put({ id: 'a', nom: 'FICTIF' }));
+    db1.close();
+    const db = await ouvrir();
+    expect([...db.objectStoreNames].sort()).toEqual(['categories', 'coffre', 'comptes', 'copies', 'meta', 'operations']);
+    expect(await lireTout(db, 'comptes')).toEqual([{ id: 'a', nom: 'FICTIF' }]);
+    db.close();
+  });
+
+  it('chiffrement initial des données 0.2.0, puis écriture/lecture chiffrées ; tout ou rien', async () => {
+    const db = await ouvrir();
+    await ecrire(db, ['comptes', 'meta'], (tx) => {
+      tx.objectStore('comptes').put({ id: 'a', nom: 'COMPTE FICTIF' });
+      tx.objectStore('meta').put({ cle: 'derniere-saisie', compteId: 'a' });
+    });
+    const { coffre, cle } = await creerCoffre('48021573', 1000);
+    const clair = { comptes: await lireTout<object>(db, 'comptes'), categories: [], operations: [], meta: await lireTout<object>(db, 'meta') };
+    await remplacer(db, cle, clair, coffre);
+    const brut = await lireBrut(db);
+    expect(Object.keys(brut.comptes[0]!).sort()).toEqual(['d', 'id', 'iv']);
+    expect(JSON.stringify(brut)).not.toContain('FICTIF');
+    expect(await lireChiffre(db, cle, 'comptes')).toEqual([{ id: 'a', nom: 'COMPTE FICTIF' }]);
+    expect(await lireChiffre(db, cle, 'meta')).toEqual([{ cle: 'derniere-saisie', compteId: 'a' }]);
+    expect((await lireTout(db, 'coffre'))[0]).toMatchObject({ cle: 'coffre', iterations: 1000 });
+
+    await ecrireChiffre(db, cle, ['comptes'], (tx) => {
+      tx.objectStore('comptes').add({ id: 'b', nom: 'B' });
+      tx.objectStore('comptes').delete('a');
+    });
+    expect(await lireChiffre(db, cle, 'comptes')).toEqual([{ id: 'b', nom: 'B' }]);
+    // doublon → tout est annulé
+    await expect(
+      ecrireChiffre(db, cle, ['comptes'], (tx) => {
+        tx.objectStore('comptes').add({ id: 'c', nom: 'C' });
+        tx.objectStore('comptes').add({ id: 'b', nom: 'B2' });
+      }),
+    ).rejects.toThrow();
+    await expect(ecrireChiffre(db, cle, ['comptes'], () => { throw new Error('fictive'); })).rejects.toBeInstanceOf(ErreurStockage);
+    await expect(ecrireChiffre(db, cle, ['comptes'], (tx) => tx.objectStore('comptes').put({ nom: 'sans id' }))).rejects.toThrow();
+    await ecrireChiffre(db, cle, ['comptes'], (tx) => tx.objectStore('comptes').clear());
+    expect(await lireChiffre(db, cle, 'comptes')).toEqual([]);
+    db.close();
+  });
+
+  it(`copies internes : contenu brut chiffré, ${COPIES_MAX} plus récentes gardées`, async () => {
+    const db = await ouvrir();
+    const { coffre, cle } = await creerCoffre('48021573', 1000);
+    await remplacer(db, cle, { comptes: [{ id: 'a', nom: 'X' }], categories: [], operations: [], meta: [] }, coffre);
+    for (let i = 1; i <= 9; i++) await copierInterne(db, new Date(Date.UTC(2026, 10, i)));
+    const copies = await lireTout<{ id: string; donnees: { comptes: unknown[] } }>(db, 'copies');
+    expect(copies.map((c) => c.id.slice(0, 10))).toEqual(['03', '04', '05', '06', '07', '08', '09'].map((j) => `2026-11-${j}`));
+    expect(copies[0]!.donnees.comptes).toEqual((await lireBrut(db)).comptes);
+    db.close();
   });
 });

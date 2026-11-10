@@ -1,5 +1,6 @@
 // Stockage IndexedDB natif : base versionnée, migrations appliquées dans l'ordre, écritures « tout ou rien ».
 // Règle absolue : aucune migration n'efface de données ; une migration qui échoue annule tout (version inchangée).
+import { chiffrer, dechiffrer, type Chiffre } from './coffre.ts';
 
 export type Migration = (db: IDBDatabase, tx: IDBTransaction) => void;
 
@@ -11,6 +12,11 @@ export const MIGRATIONS: readonly Migration[] = [
     db.createObjectStore('categories', { keyPath: 'id' });
     db.createObjectStore('operations', { keyPath: 'id' });
     db.createObjectStore('meta', { keyPath: 'cle' });
+  },
+  // v2 (0.3.0) : coffre (clés enfermées, essais) et copies internes. Ne touche à aucune donnée existante.
+  (db) => {
+    db.createObjectStore('coffre', { keyPath: 'cle' });
+    db.createObjectStore('copies', { keyPath: 'id' });
   },
 ];
 
@@ -119,4 +125,103 @@ export async function demanderPersistance(storage: StorageManager | undefined = 
   } catch {
     return false;
   }
+}
+
+// ——— Données chiffrées (0.3.0) ———
+// Magasins de données : chaque enregistrement est stocké { clé, iv, d } (seule la clé, un UUID ou un nom
+// technique, reste lisible). Le coffre (clés enfermées, essais) et les copies (déjà chiffrées) sont à part.
+
+export const DONNEES = ['comptes', 'categories', 'operations', 'meta'] as const;
+export type Magasin = (typeof DONNEES)[number];
+export type Scelle = Chiffre & { id?: string; cle?: string };
+export type Brut = Record<Magasin, Scelle[]>;
+export type Clair = Record<Magasin, object[]>;
+
+const champCle = (m: string) => (m === 'meta' ? 'cle' : 'id');
+
+/** Ce que voit un travail d'écriture : les actions sont notées, chiffrées, puis rejouées dans une seule transaction. */
+export interface Tx {
+  objectStore(nom: string): { put(v: object): void; add(v: object): void; delete(k: string): void; clear(): void };
+}
+
+export async function sceller(cle: CryptoKey, magasin: string, valeur: object): Promise<Scelle> {
+  const champ = champCle(magasin);
+  const id = (valeur as Record<string, unknown>)[champ];
+  if (typeof id !== 'string') throw erreur('inconnue');
+  return { [champ]: id, ...(await chiffrer(cle, magasin, id, valeur)) };
+}
+
+/** Écriture chiffrée « tout ou rien » : le chiffrement (asynchrone) a lieu avant d'ouvrir la transaction. */
+export async function ecrireChiffre(db: IDBDatabase, cle: CryptoKey, magasins: string[], travail: (tx: Tx) => void): Promise<void> {
+  type Action = { m: string; a: 'put' | 'add' | 'delete' | 'clear'; v?: unknown };
+  const actions: Action[] = [];
+  try {
+    travail({
+      objectStore: (m) => ({
+        put: (v) => void actions.push({ m, a: 'put', v }),
+        add: (v) => void actions.push({ m, a: 'add', v }),
+        delete: (k) => void actions.push({ m, a: 'delete', v: k }),
+        clear: () => void actions.push({ m, a: 'clear' }),
+      }),
+    });
+  } catch (e) {
+    throw traduire(e);
+  }
+  const pretes = await Promise.all(
+    actions.map(async (x) => (x.a === 'put' || x.a === 'add' ? { ...x, v: await sceller(cle, x.m, x.v as object) } : x)),
+  );
+  await ecrire(db, magasins, (tx) => {
+    for (const x of pretes) {
+      const s = tx.objectStore(x.m);
+      if (x.a === 'clear') s.clear();
+      else if (x.a === 'delete') s.delete(x.v as string);
+      else s[x.a](x.v);
+    }
+  });
+}
+
+export async function lireChiffre<T>(db: IDBDatabase, cle: CryptoKey, magasin: Magasin): Promise<T[]> {
+  const champ = champCle(magasin);
+  const brut = await lireTout<Scelle>(db, magasin);
+  return Promise.all(brut.map((r) => dechiffrer<T>(cle, magasin, r[champ] as string, r)));
+}
+
+export async function lireBrut(db: IDBDatabase): Promise<Brut> {
+  const [comptes, categories, operations, meta] = await Promise.all(DONNEES.map((m) => lireTout<Scelle>(db, m)));
+  return { comptes: comptes!, categories: categories!, operations: operations!, meta: meta! };
+}
+
+/**
+ * Remplace toutes les données par `donnees` (chiffrées avec `cle`) en une seule transaction.
+ * Sert au chiffrement initial (données 0.2.0 en clair) et à la restauration. `coffre` : nouveau coffre à enregistrer.
+ */
+export async function remplacer(db: IDBDatabase, cle: CryptoKey, donnees: Clair, coffre?: object): Promise<void> {
+  const scelles = await Promise.all(DONNEES.map((m) => Promise.all(donnees[m].map((v) => sceller(cle, m, v)))));
+  await ecrire(db, [...DONNEES, 'coffre'], (tx) => {
+    DONNEES.forEach((m, i) => {
+      const s = tx.objectStore(m);
+      s.clear();
+      for (const v of scelles[i]!) s.put(v);
+    });
+    if (coffre) tx.objectStore('coffre').put(coffre);
+  });
+}
+
+export const COPIES_MAX = 7;
+export interface Copie {
+  /** Date et heure ISO : l'ordre alphabétique est l'ordre chronologique. */
+  id: string;
+  donnees: Brut;
+}
+
+/** Copie interne des données (déjà chiffrées) ; seules les COPIES_MAX plus récentes sont gardées. */
+export async function copierInterne(db: IDBDatabase, maintenant = new Date()): Promise<void> {
+  const [donnees, copies] = await Promise.all([lireBrut(db), lireTout<Copie>(db, 'copies')]);
+  const id = maintenant.toISOString();
+  const anciennes = [...copies.map((c) => c.id), id].sort().slice(0, -COPIES_MAX);
+  await ecrire(db, ['copies'], (tx) => {
+    const s = tx.objectStore('copies');
+    s.put({ id, donnees });
+    for (const k of anciennes) s.delete(k);
+  });
 }

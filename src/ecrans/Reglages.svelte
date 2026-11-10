@@ -1,14 +1,25 @@
 <script lang="ts">
-  // Réglages : version, état du stockage persistant (simple affichage, sans alerte), accès aux comptes.
+  // Réglages : comptes, catégories, sécurité, sauvegarde, version, état du stockage persistant (sans alerte).
+  import { formaterDate } from '../lib/dates';
+
   let {
     persistant,
+    derniere,
     oncomptes,
     oncategories,
+    oncode,
+    onsauvegarde,
+    onverrouiller,
     onreinitialiser,
   }: {
     persistant: boolean | null;
+    /** Date de la dernière sauvegarde externe, ou null. */
+    derniere: string | null;
     oncomptes: () => void;
     oncategories: () => void;
+    oncode: () => void;
+    onsauvegarde: () => void;
+    onverrouiller: () => void;
     /** Démo uniquement (null dans l'app réelle). */
     onreinitialiser: (() => Promise<boolean>) | null;
   } = $props();
@@ -38,6 +49,25 @@
     </li>
   </ul>
 
+  <ul class="carte liste">
+    <li>
+      <button type="button" class="ligne" onclick={onsauvegarde}>
+        <span>Sauvegarde</span>
+        <span class="secondaire">{derniere ? formaterDate(derniere) : 'Aucune'} ›</span>
+      </button>
+    </li>
+    <li>
+      <button type="button" class="ligne" onclick={oncode}>
+        <span>Changer le code</span><span class="secondaire" aria-hidden="true">›</span>
+      </button>
+    </li>
+    <li>
+      <button type="button" class="ligne" onclick={onverrouiller}>
+        <span>Verrouiller maintenant</span><span class="secondaire" aria-hidden="true">›</span>
+      </button>
+    </li>
+  </ul>
+
   <dl class="carte liste">
     <div class="ligne">
       <dt>Version</dt>
@@ -55,7 +85,7 @@
           Non accordé par Safari
           <p class="secondaire">
             Les données restent enregistrées, mais Safari pourrait les effacer s'il manque de place. La sauvegarde
-            externe (à venir) protège de ce risque.
+            externe protège de ce risque.
           </p>
         {/if}
       </dd>

@@ -1,6 +1,6 @@
 // Carnet d'archives (étape 2b) : filtres, modification, suppression avec confirmation. Données FICTIVES uniquement.
 import { expect, test, type Page } from '@playwright/test';
-import { APP, categorie, compte, feuille, nav, plus, solde, taper, virer } from './aides';
+import { demarrer, recharger, categorie, compte, feuille, nav, plus, solde, taper, virer } from './aides';
 
 const lignes = (page: Page) => page.getByRole('list', { name: 'Opérations' }).getByRole('button');
 const filtre = (page: Page, nom: 'Compte' | 'Catégorie', label: string) => page.getByLabel(nom).selectOption({ label });
@@ -17,7 +17,7 @@ const nbEcritures = (page: Page) =>
   );
 
 async function preparer(page: Page) {
-  await page.goto(APP);
+  await demarrer(page);
   await compte(page, 'Compte fictif', { solde: '500' });
   await compte(page, 'Livret fictif', { type: 'Épargne' });
   await categorie(page, 'Courses fictives');
@@ -77,7 +77,7 @@ test('modifier une opération puis un virement (ses deux écritures ensemble) : 
   await expect(lignes(page).filter({ hasText: 'VIREMENT depuis' })).toContainText(/60,00\s€\s*Crédit/);
   expect(await nbEcritures(page)).toBe(3);
 
-  await page.reload();
+  await recharger(page);
   await expect(solde(page, 'COMPTE FICTIF')).toContainText('420,00 €'); // 500 − 20 − 60
   await expect(solde(page, 'LIVRET FICTIF')).toContainText('60,00 €');
 });
@@ -103,7 +103,7 @@ test('supprimer : annuler garde tout ; confirmer un virement retire ses deux éc
   await feuille(page).getByRole('alertdialog').getByRole('button', { name: 'Supprimer' }).click();
   await expect(page.getByText('Aucune opération pour ce choix.')).toBeVisible();
 
-  await page.reload();
+  await recharger(page);
   await expect(solde(page, 'COMPTE FICTIF')).toContainText('500,00 €');
   await expect(solde(page, 'LIVRET FICTIF')).toContainText('0,00 €');
 });
